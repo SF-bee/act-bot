@@ -1,0 +1,28 @@
+# ACT Bot 业务配置（示例）
+# 用法：复制本文件为 config/config.toml 后按需修改；config.toml 不入库。
+# 原则：每个配置项只有一个来源 ——
+#   部署相关（地址 / 端口 / token / 数据目录）→ .env
+#   业务相关（功能开关 / 限速 / 备份策略）→ 本文件
+#   运行时数据（管理员 / 群 / 资料等）→ 数据库
+
+[features]
+# 功能开关（对应各插件；关闭后对应功能不响应）
+welcome = true        # 入群欢迎
+departments = true    # 部门查询
+events = true         # 社活通知
+signups = true        # 活动报名
+broadcast = true      # 管理员广播
+archive = true        # 历届作品 / 资料查询
+group_admin = true    # 基础群管理
+
+[broadcast]
+# 广播时群与群之间的发送间隔（秒），用于控制频率、降低风控
+interval_seconds = 3
+
+[backup]
+# 每日自动备份时间（HH:MM，本地时区）
+daily_at = "03:00"
+# 滚动保留最近 N 天的每日备份
+keep_daily_days = 30
+# 另外保留最近 N 个月的月度副本
+keep_monthly = 6

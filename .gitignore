@@ -1,0 +1,24 @@
+# ---- 凭据 / 本地配置（绝不入库）----
+.env
+.env.*
+!.env.example
+config/config.toml
+
+# ---- 运行数据（唯一资产；整体不入库）----
+data/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- 系统 / 编辑器 ----
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
