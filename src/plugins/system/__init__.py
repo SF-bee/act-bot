@@ -18,7 +18,7 @@ ping = on_command("ping", priority=10, block=True)
 
 @ping.handle()
 async def _handle_ping() -> None:
-    await ping.finish("pong 🐾")
+    await ping.finish("pong")
 
 
 version = on_command("version", priority=10, block=True)

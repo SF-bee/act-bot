@@ -20,6 +20,9 @@ services:
       # Windows / macOS：保持默认（Docker Desktop 下 UID/GID 语义不同，见 README）
       NAPCAT_UID: "${NAPCAT_UID:-1000}"
       NAPCAT_GID: "${NAPCAT_GID:-1000}"
+      # 快速登录（免扫码）：镜像 entrypoint 见 ACCOUNT 会执行 `qq -q $ACCOUNT`。
+      # QQ 号只从 .env 注入（NAPCAT_QQ=...），绝不写入仓库；留空则退化为扫码登录。
+      ACCOUNT: "${NAPCAT_QQ:-}"
     volumes:
       # NapCat 配置 / 插件 / QQ 登录态必须持久化，否则每次重建都要重新扫码
       - ./runtime/napcat/config:/app/napcat/config

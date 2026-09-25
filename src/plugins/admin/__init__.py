@@ -13,7 +13,7 @@ __plugin_meta__ = PluginMetadata(
     usage="/权限 — 查看自己的权限与管理员名单",
 )
 
-permission_cmd = on_command("权限", priority=10, block=True)
+permission_cmd = on_command("op", priority=10, block=True)
 
 
 @permission_cmd.handle()

@@ -29,6 +29,55 @@ uv run python bot.py             # 启动机器人（默认监听 127.0.0.1:8080
 uv run python scripts/smoke_fake.py
 ```
 
+## 运行逻辑（改代码前先看这一节）
+
+```
+QQ 群 / 好友
+   ↕  （腾讯协议，由协议端负责）
+[协议端 NapCat]        独立进程或容器，持有 QQ 登录态
+   ↓  反向 WebSocket（协议端作为客户端主动连过来）
+[业务层 本仓库]        NoneBot2 + OneBot v11 适配器，监听 8080
+   ↓  SQLite（data/act.db，版本化迁移）
+```
+
+1. **协议端**负责与腾讯通信、持有登录态；它主动连业务层 `ws://<机器人主机>:8080/onebot/v11/ws`，握手头带 `X-Self-ID`，可选 token（两边必须一致）。
+2. **业务层**（本仓库，单进程）启动顺序：读 `.env` → `nonebot.init()` → 注册 OneBot v11 适配器 → 建库并跑迁移 → 启动 APScheduler → 监听 8080。
+3. 群里有人发消息 → 协议端推 `message.group` 事件 → 插件的 matcher 按命令前缀（默认 `/`）匹配 → 插件执行（可读写 SQLite）→ 回复经 `send_msg` 交回协议端 → 协议端发出去。
+4. 业务层**不持有** QQ 登录态、也**不主动**连协议端；所以它可以随时重启，协议端会自动重连（断几秒）。接口约定见 `docs/onebot-contract.md`。
+5. 全部状态只有两处：SQLite（`data/`，路径来自 `ACTBOT_DATA_DIR`）与配置文件。业务层进程本身无状态。
+
+## 改了东西怎么生效
+
+| 你改了什么 | 怎么生效 |
+| --- | --- |
+| 业务代码（`src/`、`bot.py`） | **重启业务层**（见下表） |
+| 配置（`.env`、`config/config.toml`） | 同样**重启**——设置是进程级缓存，不会热读 |
+| 依赖（`pyproject.toml`） | 先 `uv sync` 再重启 |
+| 数据库结构 | 在 `src/core/migrations/` 新增 `00X_描述.sql`（文件名数字即版本号），**重启时自动按序应用**，幂等可重复跑 |
+| 加一个新命令 | 新建/修改 `src/plugins/<名字>/__init__.py` 里的 matcher，然后重启 |
+| 协议端配置（网络、token） | 改 NapCat 侧配置后 `docker compose -f deploy/docker/docker-compose.yml restart napcat` |
+
+重启与看日志，按部署方式：
+
+| 部署方式 | 重启 | 看日志 |
+| --- | --- | --- |
+| macOS 开发机（launchd，见 `deploy/macos/`） | `launchctl kickstart -k gui/$(id -u)/com.actbot.dev` | `tail -f ~/Library/Logs/actbot-dev.log` |
+| 前台调试 | Ctrl+C 后 `HOST=0.0.0.0 uv run python bot.py` | 终端 |
+| Ubuntu 生产（systemd，见 `deploy/linux/`） | `sudo systemctl restart act-bot` | `journalctl -u act-bot -f` |
+| Docker（业务层也在容器里，见 `deploy/docker/`） | `docker compose -f deploy/docker/docker-compose.yml up -d --build act-bot` | `docker compose -f deploy/docker/docker-compose.yml logs -f act-bot` |
+| Windows（NSSM，见 `deploy/windows/`） | `Restart-Service act-bot` | `<仓库>\logs\act-bot.out.log` |
+
+改完先自测（都不需要真实 QQ）：
+
+```bash
+uv run pytest -q                     # 单元测试
+uv run python scripts/doctor.py      # 环境自检
+uv run python scripts/smoke_fake.py  # Fake 协议端端到端
+```
+
+> 两个常见坑：**①** Docker 路线下业务代码在镜像里，改完必须带 `--build` 重建才生效；
+> **②** 协议端跑在 Docker Desktop、业务层跑在宿主机时，业务层要 `HOST=0.0.0.0`（否则容器连不进来，日志会刷 ECONNREFUSED），详见 `docs/deploy-macos-dev.md`。
+
 ## 运行测试
 
 ```bash

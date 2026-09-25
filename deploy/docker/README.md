@@ -28,6 +28,7 @@ NAPCAT_UID=$(id -u) NAPCAT_GID=$(id -g) docker compose -f deploy/docker/docker-c
 
 ## 3. 协议端登录与连线
 
+0. **免扫码（推荐）**：在 `deploy/docker/.env` 里设 `NAPCAT_QQ=<机器人QQ号>`——compose 会作为 `ACCOUNT` 传给容器，镜像 entrypoint 执行 `qq -q $ACCOUNT` 走快速登录（实测重建容器后直接 `正在快速登录`，无需扫码）。留空则走下面的扫码流程。
 1. 取 WebUI 登录 token：`docker compose -f deploy/docker/docker-compose.yml logs act-napcat | head -50`
 2. 隧道访问 WebUI（**不要**把 6099 暴露公网）：
    ```bash
@@ -54,6 +55,7 @@ uv run python scripts/smoke_protocol.py --url ws://127.0.0.1:3001
   属网络问题（非仓库问题）。给 Docker 配置镜像加速器，或在能访问的机器上预拉
   `python:3.13-slim` 与 `ghcr.io/astral-sh/uv:latest` 后再构建。
   > 本机（开发 Mac）实测：Docker Hub 连接不稳定，镜像构建未能本地验证；`docker compose config` 校验通过。
+- **每次重建容器都要重新扫码**：`NAPCAT_QQ` 没设（= 没走 `-q` 快速登录），或 `runtime/ntqq` 数据目录被清掉；
 - **容器起来但协议端 403 / 连不上**：核对 `ONEBOT_ACCESS_TOKEN` 两边一致、
   NapCat 反向 WS 地址用的是 `ws://act-bot:8080/onebot/v11/ws`（同一 compose 网络内）。
 
