@@ -48,6 +48,8 @@ uv run python scripts/smoke_fake.py
 
 **新增插件时的约定**：在 `PluginMetadata` 里填好 `usage`（一行一个命令，形如 `/cmd — 说明`）与 `extra`（`role`: `member`/`admin`、`order`: 排序权重），`/help` 会自动收录，不需要改帮助插件。
 
+**命令分层约定**（避免两个入口改同一份状态）：**开关类操作一律走 `/config <功能> on|off`**；业务命令只负责该功能专有的展示与内容（例如 `/welcome` 只读状态与预览）。新增功能请照此分层，审计动作名统一为 `config.set`。
+
 ## 运行逻辑（改代码前先看这一节）
 
 ```
