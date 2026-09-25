@@ -10,7 +10,8 @@
     6. 管理员发 /audit → 期望能看到 config.set 审计记录；
     7. 管理员发 /welcome on → 期望被引导到 /config（/welcome 只读，开关不重复实现）；
     8. Chat Engine：/config chat on 后 @ 机器人 → 期望收到聊天回应；
-    9. /config chat off 后 @ 机器人 → 期望被群级门控拦下。
+    9. /config chat off 后 @ 机器人 → 期望被群级门控拦下；
+   10. /stats：管理员能看到命令/自动回复统计，普通成员看不到（角色分流）。
 
 用法：
     uv run python scripts/smoke_events.py [--timeout 90] [--log-level DEBUG]
@@ -315,6 +316,29 @@ async def run_smoke(timeout: float, log_level: str = "INFO") -> int:
             await connection.send(json.dumps(build_mention_message("还在吗"), ensure_ascii=False))
             gated_chat = await drain(connection, quiet=0.8, max_wait=3.0)
             check("chat 关闭后 @ 不再回应", not gated_chat, "收到 {0} 条发送".format(len(gated_chat)))
+
+            # 9. /stats：管理员与普通成员看到的内容不同
+            await connection.send(json.dumps(build_group_message("大家好啊"), ensure_ascii=False))
+            await drain(connection, quiet=0.6, max_wait=2.0)
+            await connection.send(json.dumps(build_group_message("/stats"), ensure_ascii=False))
+            admin_stats = await drain(connection, quiet=0.8, max_wait=5.0)
+            admin_text = extract_text(admin_stats[-1]["params"].get("message")) if admin_stats else ""
+            check(
+                "管理员 /stats 可见命令与自动回复统计",
+                "本群统计" in admin_text and "命令" in admin_text and "自动回复" in admin_text,
+                admin_text[:70].replace("\n", " | "),
+            )
+
+            await connection.send(
+                json.dumps(build_group_message("/stats", NEWCOMER), ensure_ascii=False)
+            )
+            member_stats = await drain(connection, quiet=0.8, max_wait=5.0)
+            member_text = extract_text(member_stats[-1]["params"].get("message")) if member_stats else ""
+            check(
+                "普通成员 /stats 不显示管理数据",
+                "本群统计" in member_text and "命令" not in member_text,
+                member_text[:70].replace("\n", " | "),
+            )
     except Exception as exc:  # noqa: BLE001 - 冒烟工具：展示所有异常
         failure = f"{type(exc).__name__}: {exc}"
         print(f"❌ 冒烟异常：{failure}")

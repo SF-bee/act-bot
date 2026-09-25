@@ -15,7 +15,7 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
 
-from src.core import features, groups, persona
+from src.core import features, groups, persona, stats
 from src.core import permissions as perms
 from src.core.config import get_settings
 from src.core.events import GroupMemberJoin, subscribe
@@ -62,6 +62,7 @@ async def _on_member_join(event: GroupMemberJoin, bot: Bot) -> None:
     except Exception:  # noqa: BLE001 - 发送失败只记日志
         logger.exception("发送入群欢迎失败：group=%s user=%s", event.group_id, event.user_id)
         return
+    stats.record_auto_reply(event.group_id, tz_name=settings.timezone)
     logger.info("已发送入群欢迎：group=%s user=%s", event.group_id, event.user_id)
 
 

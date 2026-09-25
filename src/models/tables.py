@@ -149,3 +149,14 @@ class ChatRule(Base):
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[str] = mapped_column(String, default="")
+
+
+class StatsDaily(Base):
+    """每日统计（迁移 004）：按 群 + 日期 + 指标 存一行；group_id 为空表示全局。"""
+
+    __tablename__ = "stats_daily"
+
+    group_id: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    date: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    metric: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    value: Mapped[int] = mapped_column(Integer, default=0)

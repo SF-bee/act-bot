@@ -10,7 +10,7 @@ from nonebot import on_message, on_notice
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, NoticeEvent
 from nonebot.plugin import PluginMetadata
 
-from src.core import events
+from src.core import events, stats
 
 __plugin_meta__ = PluginMetadata(
     name="events",
@@ -26,10 +26,14 @@ notice_ingress = on_notice(priority=99, block=False)
 
 @message_ingress.handle()
 async def _ingest_message(bot: Bot, event: MessageEvent) -> None:
-    await events.ingest(event, bot)
+    report = await events.ingest(event, bot)
+    if report is not None and report.failed:
+        stats.record_error()
 
 
 @notice_ingress.handle()
 async def _ingest_notice(bot: Bot, event: NoticeEvent) -> None:
-    await events.ingest(event, bot)
+    report = await events.ingest(event, bot)
+    if report is not None and report.failed:
+        stats.record_error()
 

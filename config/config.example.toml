@@ -41,6 +41,15 @@ escalate_after = 3
 # 连续计数多久没再被叫就重新计数（秒）
 escalate_window_seconds = 120
 
+[stats]
+# 统计（内存累加 → 定时落库；单条消息绝不写库）
+# 落库间隔（秒）
+flush_seconds = 60
+# /stats 里给管理员看的活跃 Top N（仅内存，不落库）
+top_users = 5
+# 历史回看天数
+history_days = 7
+
 [broadcast]
 # 广播时群与群之间的发送间隔（秒），用于控制频率、降低风控
 interval_seconds = 3

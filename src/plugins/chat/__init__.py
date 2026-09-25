@@ -22,11 +22,11 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.plugin import PluginMetadata
 
-from src.core import audit, chat, features, groups
+from src.core import audit, chat, features, groups, stats
 from src.core import permissions as perms
 from src.core.config import get_settings
 from src.core.events import MessageReceived, subscribe
-from src.core.onebot import safe_group_name, safe_member_label
+from src.core.onebot import command_prefixes, safe_group_name, safe_member_label
 
 logger = logging.getLogger("actbot.chat")
 
@@ -47,17 +47,6 @@ chat_cmd = on_command("chat", priority=10, block=True)
 _STATE = chat.ChatState()
 
 
-def _command_prefixes() -> tuple[str, ...]:
-    """从 nonebot 配置读命令前缀，避免把命令当聊天内容回应。"""
-    try:
-        from nonebot import get_driver
-
-        starts = tuple(get_driver().config.command_start)
-        return starts or ("/",)
-    except Exception:  # noqa: BLE001 - 取不到就用默认前缀
-        return ("/",)
-
-
 @subscribe(MessageReceived, feature=features.FEATURE_CHAT, name="chat")
 async def _on_message(event: MessageReceived, bot: Bot) -> None:
     """群消息 → 判断是否在叫它 → 决定是否回应。"""
@@ -66,7 +55,7 @@ async def _on_message(event: MessageReceived, bot: Bot) -> None:
     text = (event.text or "").strip()
     if not text and not event.at_self:
         return
-    if text.startswith(_command_prefixes()):
+    if text.startswith(command_prefixes()):
         return  # 命令交给命令系统，聊天引擎不掺和
 
     settings = get_settings()
@@ -104,6 +93,7 @@ async def _on_message(event: MessageReceived, bot: Bot) -> None:
     except Exception:  # noqa: BLE001 - 发送失败只记日志，不影响其它事件
         logger.exception("聊天回应发送失败：group=%s user=%s", event.group_id, event.user_id)
         return
+    stats.record_auto_reply(event.group_id, tz_name=settings.timezone)
     logger.info(
         "聊天回应（%s）：group=%s user=%s → %s",
         decision.reason, event.group_id, event.user_id, reply[:40],

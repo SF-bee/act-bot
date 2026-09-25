@@ -57,9 +57,13 @@ def main() -> None:
 
     @driver.on_shutdown
     async def _on_shutdown() -> None:
-        from src.core import db, scheduler
+        from src.core import db, scheduler, stats
 
         scheduler.shutdown()
+        try:  # 退出前把统计内存里的增量落库（尽力而为）
+            await stats.flush()
+        except Exception:  # noqa: BLE001 - 退出流程不应因为统计失败而中断
+            logger.exception("退出时统计落库失败")
         await db.dispose_engine()
 
     nonebot.load_from_toml("pyproject.toml")

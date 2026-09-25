@@ -11,6 +11,21 @@ from typing import Any
 logger = logging.getLogger("actbot.onebot")
 
 
+def command_prefixes(default: tuple[str, ...] = ("/",)) -> tuple[str, ...]:
+    """从 nonebot 配置读命令前缀（读不到就用默认值）。
+
+    放在这里是因为「命令 vs 聊天」的判定在多个插件里都要用（chat 要跳过命令、
+    stats 要判断是不是命令调用），不该各写一份。
+    """
+    try:
+        from nonebot import get_driver
+
+        starts = tuple(get_driver().config.command_start)
+        return starts or default
+    except Exception:  # noqa: BLE001 - 未初始化 / 配置异常时退回默认前缀
+        return default
+
+
 async def safe_group_name(bot: Any, group_id: str) -> str:
     """群名；取不到返回空串。"""
     try:

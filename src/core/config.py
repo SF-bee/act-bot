@@ -61,6 +61,9 @@ class AppSettings:
     chat_cooldown_seconds: float = 20.0
     chat_escalate_after: int = 3
     chat_escalate_window_seconds: float = 120.0
+    stats_flush_seconds: float = 60.0
+    stats_top_users: int = 5
+    stats_history_days: int = 7
     backup_daily_at: str = "03:00"
     backup_keep_daily_days: int = 30
     backup_keep_monthly: int = 6
@@ -182,6 +185,19 @@ def load_settings(
     if isinstance(chat_window, bool) or not isinstance(chat_window, (int, float)) or chat_window < 0:
         raise ConfigError("[chat].escalate_window_seconds 应为非负数字")
 
+    stats_cfg = raw.get("stats", {})
+    if not isinstance(stats_cfg, dict):
+        raise ConfigError("[stats] 段落格式错误：应为键值对")
+    stats_flush = stats_cfg.get("flush_seconds", 60)
+    if isinstance(stats_flush, bool) or not isinstance(stats_flush, (int, float)) or stats_flush <= 0:
+        raise ConfigError("[stats].flush_seconds 应为正数")
+    stats_top = stats_cfg.get("top_users", 5)
+    if isinstance(stats_top, bool) or not isinstance(stats_top, int) or stats_top < 0:
+        raise ConfigError("[stats].top_users 应为非负整数")
+    stats_days = stats_cfg.get("history_days", 7)
+    if isinstance(stats_days, bool) or not isinstance(stats_days, int) or stats_days < 1:
+        raise ConfigError("[stats].history_days 应为 >= 1 的整数")
+
     backup = raw.get("backup", {})
     daily_at = str(backup.get("daily_at", "03:00"))
     parse_hhmm(daily_at)  # 提前校验：配置错误立即暴露
@@ -207,6 +223,9 @@ def load_settings(
         chat_cooldown_seconds=float(chat_cooldown),
         chat_escalate_after=int(chat_escalate),
         chat_escalate_window_seconds=float(chat_window),
+        stats_flush_seconds=float(stats_flush),
+        stats_top_users=int(stats_top),
+        stats_history_days=int(stats_days),
         backup_daily_at=daily_at,
         backup_keep_daily_days=int(keep_daily),
         backup_keep_monthly=int(keep_monthly),

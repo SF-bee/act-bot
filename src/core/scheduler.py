@@ -9,6 +9,7 @@ import zoneinfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from . import backup
 from .config import get_settings, parse_hhmm
@@ -56,6 +57,23 @@ def setup_and_start() -> None:
         id="daily-backup",
         replace_existing=True,
     )
+
+    if settings.feature("stats"):
+        async def _flush_stats() -> None:
+            """把统计内存增量落库（避免每条消息写库）。"""
+            try:
+                from src.core import stats
+
+                await stats.flush(tz_name=settings.timezone)
+            except Exception:  # noqa: BLE001 - 落库失败不影响机器人运行
+                logger.exception("统计落库失败")
+
+        scheduler.add_job(
+            _flush_stats,
+            IntervalTrigger(seconds=float(settings.stats_flush_seconds)),
+            id="stats-flush",
+            replace_existing=True,
+        )
     scheduler.start()
     _scheduler = scheduler
     logger.info("调度器已启动：每日备份 %02d:%02d（%s）", hour, minute, settings.timezone)
