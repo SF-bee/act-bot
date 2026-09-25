@@ -15,7 +15,7 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
 
-from src.core import audit, features, groups
+from src.core import audit, features, groups, persona
 from src.core import permissions as perms
 from src.core.config import get_settings
 from src.core.events import GroupMemberJoin, subscribe
@@ -54,6 +54,8 @@ async def _on_member_join(event: GroupMemberJoin, bot: Bot) -> None:
         group_name=await safe_group_name(bot, event.group_id),
         user_id=event.user_id,
         at_newcomer=settings.welcome_at_newcomer,
+        bot_name=persona.name(),
+        bot_title=persona.title(),
     )
     try:
         await bot.send_group_msg(group_id=int(event.group_id), message=message)
@@ -97,6 +99,8 @@ async def _handle_welcome_cmd(bot: Bot, event: MessageEvent) -> None:
         group_name=await safe_group_name(bot, group_id),
         user_id=str(event.user_id),
         at_newcomer=settings.welcome_at_newcomer,
+        bot_name=persona.name(),
+        bot_title=persona.title(),
     )
     head = MessageSegment.text(
         "入群欢迎（本群）：" + ("已开启" if enabled else "已关闭")

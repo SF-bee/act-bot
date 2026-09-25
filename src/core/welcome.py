@@ -18,17 +18,22 @@ def render_welcome(
     group_name: str,
     user_id: str,
     at_newcomer: bool = True,
+    bot_name: str = "",
+    bot_title: str = "",
 ) -> Message:
     """把欢迎语模板渲染成消息。
 
-    占位符：{nickname} 新人在群里的显示名、{group_name} 群名、{user_id} QQ 号；
-    未知占位符原样保留。``at_newcomer`` 为真时先 @ 新人再换行。
+    占位符：{nickname} 新人在群里的显示名、{group_name} 群名、{user_id} QQ 号、
+    {bot_name} 机器人人设名、{bot_title} 机器人身份；未知占位符原样保留。
+    ``at_newcomer`` 为真时先 @ 新人再换行。
     """
     text = template
     for key, value in (
         ("nickname", nickname),
         ("group_name", group_name),
         ("user_id", user_id),
+        ("bot_name", bot_name),
+        ("bot_title", bot_title),
     ):
         text = text.replace("{" + key + "}", value)
     message = Message()

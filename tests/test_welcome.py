@@ -42,6 +42,25 @@ def test_render_welcome_keeps_unknown_placeholder():
     assert "{unknown}" in message.extract_plain_text()
 
 
+def test_render_welcome_substitutes_bot_identity():
+    from src.core.welcome import render_welcome
+
+    message = render_welcome(
+        "我是 {bot_title} {bot_name}",
+        nickname="n", group_name="g", user_id="1", at_newcomer=False,
+        bot_name="Yulia", bot_title="ACT 动漫社助理",
+    )
+    assert message.extract_plain_text() == "我是 ACT 动漫社助理 Yulia"
+
+
+def test_default_welcome_text_uses_persona_placeholder(tmp_path):
+    settings = config.load_settings(
+        env={}, toml_path=tmp_path / "missing.toml", load_dotenv_first=False
+    )
+    assert "{nickname}" in settings.welcome_text
+    assert "{bot_name}" in settings.welcome_text
+
+
 def test_parse_action():
     from src.core.welcome import parse_action
 

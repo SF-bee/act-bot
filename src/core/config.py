@@ -33,8 +33,12 @@ _DEFAULT_FEATURES: dict[str, bool] = {
     "group_admin": True,
 }
 
+_DEFAULT_PERSONA_NAME = "Yulia"
+_DEFAULT_PERSONA_TITLE = "ACT 动漫社助理"
+_DEFAULT_PERSONA_ALIASES = ("尤莉娅", "尤莉", "小尤")
+
 _DEFAULT_WELCOME_TEXT = (
-    "欢迎 {nickname} 加入 ACT 动漫社！先看看群公告，有问题随时在群里问～"
+    "欢迎 {nickname} 加入 ACT 动漫社！我是社团助理 {bot_name}，先看看群公告，有问题随时在群里问～"
 )
 
 
@@ -47,6 +51,9 @@ class AppSettings:
     protocol_ws_url: str = ""
     protocol_token: str = ""
     features: dict[str, bool] = field(default_factory=lambda: dict(_DEFAULT_FEATURES))
+    persona_name: str = _DEFAULT_PERSONA_NAME
+    persona_title: str = _DEFAULT_PERSONA_TITLE
+    persona_aliases: tuple[str, ...] = _DEFAULT_PERSONA_ALIASES
     welcome_text: str = _DEFAULT_WELCOME_TEXT
     welcome_at_newcomer: bool = True
     broadcast_interval_seconds: float = 3.0
@@ -119,6 +126,25 @@ def load_settings(
             raise ConfigError(f"功能开关 {key!r} 应为 true / false")
         features[key] = value
 
+    persona = raw.get("persona", {})
+    if not isinstance(persona, dict):
+        raise ConfigError("[persona] 段落格式错误：应为键值对")
+    persona_name = persona.get("name", _DEFAULT_PERSONA_NAME)
+    if not isinstance(persona_name, str) or not persona_name.strip():
+        raise ConfigError("[persona].name 应为非空字符串")
+    persona_title = persona.get("title", _DEFAULT_PERSONA_TITLE)
+    if not isinstance(persona_title, str) or not persona_title.strip():
+        raise ConfigError("[persona].title 应为非空字符串")
+    raw_aliases = persona.get("aliases", list(_DEFAULT_PERSONA_ALIASES))
+    if not isinstance(raw_aliases, list) or not all(
+        isinstance(item, str) and item.strip() for item in raw_aliases
+    ):
+        raise ConfigError("[persona].aliases 应为非空字符串数组")
+    # 人设名本身也算一个称呼（去重且排在首位）
+    persona_aliases = tuple(
+        dict.fromkeys([persona_name.strip(), *[item.strip() for item in raw_aliases]])
+    )
+
     welcome = raw.get("welcome", {})
     if not isinstance(welcome, dict):
         raise ConfigError("[welcome] 段落格式错误：应为键值对")
@@ -149,6 +175,9 @@ def load_settings(
         protocol_ws_url=str(env.get("ACTBOT_PROTOCOL_WS_URL", "")).strip(),
         protocol_token=str(env.get("ACTBOT_PROTOCOL_TOKEN", "")).strip(),
         features=features,
+        persona_name=persona_name.strip(),
+        persona_title=persona_title.strip(),
+        persona_aliases=persona_aliases,
         welcome_text=welcome_text,
         welcome_at_newcomer=welcome_at_newcomer,
         broadcast_interval_seconds=float(interval),

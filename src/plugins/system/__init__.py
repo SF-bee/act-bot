@@ -5,6 +5,7 @@ from nonebot import on_command
 from nonebot.plugin import PluginMetadata
 
 import src
+from src.core import persona
 from src.core.config import get_settings
 
 __plugin_meta__ = PluginMetadata(
@@ -30,5 +31,6 @@ async def _handle_version() -> None:
     settings = get_settings()
     enabled = sum(1 for value in settings.features.values() if value)
     await version.finish(
-        f"ACT Bot v{src.__version__}｜功能开关 {enabled}/{len(settings.features)}｜文档见仓库 docs/"
+        f"{persona.intro()} · v{src.__version__}"
+        f"｜功能开关 {enabled}/{len(settings.features)}｜文档见仓库 docs/"
     )

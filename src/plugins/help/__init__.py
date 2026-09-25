@@ -15,6 +15,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.plugin import PluginMetadata
 
 from src.core import permissions as perms
+from src.core import persona
 from src.core.help import ADMIN_ROLE, HelpEntry, build_entry, render_help
 
 __plugin_meta__ = PluginMetadata(
@@ -48,6 +49,6 @@ def collect_entries() -> list[HelpEntry]:
 @help_cmd.handle()
 async def _handle_help(event: MessageEvent) -> None:
     role = await perms.get_role(str(event.user_id))
-    header = f"ACT Bot 命令（你的权限：{role or '普通成员'}）"
+    header = f"{persona.intro()} · 命令（你的权限：{role or '普通成员'}）"
     await help_cmd.finish(render_help(collect_entries(), is_admin=role is not None, header=header))
 
