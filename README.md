@@ -33,11 +33,14 @@ uv run python scripts/smoke_fake.py
 
 | 功能 | 触发 | 说明 |
 | --- | --- | --- |
+| 帮助菜单 | `/help` | 命令清单由各插件的 `PluginMetadata` 自动汇总；**普通成员与管理员看到的内容不同**（管理员多一段「管理员命令」） |
 | 入群欢迎 | 有人入群（`notice.group_increase`） | 自动 @ 新人 + 欢迎语；两级开关：全局 `[features].welcome`（config.toml）、群级「群内 `/welcome on` 或 `/welcome off`」；文案在 `[welcome].text`，支持占位符 `{nickname}` / `{group_name}` / `{user_id}`；同一人 60 秒内重复事件只欢迎一次 |
 | 连通性检查 | `/ping` | 回复 `pong` |
 | 版本信息 | `/version` | 版本号 + 已开启的功能开关数 |
 
-命令一律用英文（方便手机输入）；管理类命令仅管理员可用，非管理员静默。其余命令用法见各插件 `__plugin_meta__.usage`。
+命令一律用英文（方便手机输入）；管理类命令仅管理员可用，非管理员静默。
+
+**新增插件时的约定**：在 `PluginMetadata` 里填好 `usage`（一行一个命令，形如 `/cmd — 说明`）与 `extra`（`role`: `member`/`admin`、`order`: 排序权重），`/help` 会自动收录，不需要改帮助插件。
 
 ## 运行逻辑（改代码前先看这一节）
 

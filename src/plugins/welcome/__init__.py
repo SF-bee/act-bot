@@ -36,6 +36,7 @@ __plugin_meta__ = PluginMetadata(
     name="welcome",
     description="入群欢迎（管理员可开关）",
     usage="/welcome — 查看本群入群欢迎开关与欢迎语预览\n/welcome on|off — 开启 / 关闭本群入群欢迎",
+    extra={"role": "admin", "order": 110},
 )
 
 group_increase = on_notice(priority=10, block=False)

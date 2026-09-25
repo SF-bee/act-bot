@@ -11,6 +11,7 @@ __plugin_meta__ = PluginMetadata(
     name="admin",
     description="管理员命令（权限查看）",
     usage="/op — 查看自己的权限与管理员名单",
+    extra={"role": "member", "order": 30},
 )
 
 permission_cmd = on_command("op", priority=10, block=True)

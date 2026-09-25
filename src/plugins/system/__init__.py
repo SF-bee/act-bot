@@ -11,6 +11,7 @@ __plugin_meta__ = PluginMetadata(
     name="system",
     description="基础系统命令（连通性检查）",
     usage="/ping — 检查机器人连通性\n/version — 查看版本与运行信息",
+    extra={"role": "member", "order": 20},
 )
 
 ping = on_command("ping", priority=10, block=True)
