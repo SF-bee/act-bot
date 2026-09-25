@@ -48,7 +48,16 @@ uv run python scripts/smoke_protocol.py --url ws://127.0.0.1:3001
 # 群内发 /ping 应回 pong；随后按 docs/acceptance.md 逐项打勾
 ```
 
-## 5. 平台差异（详见 docs/platform-notes.md）
+## 5. 排障
+
+- **`docker build` 拉不到基础镜像 / `failed to resolve ... registry-1.docker.io: EOF`**：
+  属网络问题（非仓库问题）。给 Docker 配置镜像加速器，或在能访问的机器上预拉
+  `python:3.13-slim` 与 `ghcr.io/astral-sh/uv:latest` 后再构建。
+  > 本机（开发 Mac）实测：Docker Hub 连接不稳定，镜像构建未能本地验证；`docker compose config` 校验通过。
+- **容器起来但协议端 403 / 连不上**：核对 `ONEBOT_ACCESS_TOKEN` 两边一致、
+  NapCat 反向 WS 地址用的是 `ws://act-bot:8080/onebot/v11/ws`（同一 compose 网络内）。
+
+## 6. 平台差异（详见 docs/platform-notes.md）
 
 | 差异点 | Ubuntu | Windows（Docker Desktop） | macOS（Docker Desktop） |
 | --- | --- | --- | --- |
@@ -57,7 +66,7 @@ uv run python scripts/smoke_protocol.py --url ws://127.0.0.1:3001
 | 自启 | docker 服务 + `restart: unless-stopped` | Docker Desktop 需常驻 + 容器 restart | 同 Windows |
 | 挂载属主 | 正常 | 经 WSL2，多为 root，注意 CRLF | 经虚拟机映射 |
 
-## 6. 常用运维
+## 7. 常用运维
 
 ```bash
 C=deploy/docker/docker-compose.yml

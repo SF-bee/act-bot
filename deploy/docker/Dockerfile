@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # ACT Bot 业务层镜像（协议端 NapCat 是独立容器，见同目录 docker-compose.yml）
 #
 # 构建（在仓库根执行）：
