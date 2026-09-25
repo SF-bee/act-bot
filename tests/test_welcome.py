@@ -40,6 +40,18 @@ def test_render_welcome_keeps_unknown_placeholder():
     assert "{unknown}" in message.extract_plain_text()
 
 
+def test_parse_action():
+    from src.core.welcome import parse_action
+
+    assert parse_action("/welcome") == ""
+    assert parse_action("/welcome on") == "on"
+    assert parse_action("/welcome OFF") == "off"
+    assert parse_action("/welcome  on  ") == "on"
+    # 中文参数不再识别（命令与参数统一英文）
+    assert parse_action("/welcome 开") == "unknown"
+    assert parse_action("/welcome whatever") == "unknown"
+
+
 def test_welcome_dedup_window():
     from src.core.welcome import is_duplicate
 

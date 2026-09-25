@@ -28,18 +28,18 @@ from nonebot.plugin import PluginMetadata
 from src.core import groups
 from src.core import permissions as perms
 from src.core.config import get_settings
-from src.core.welcome import is_duplicate, render_welcome
+from src.core.welcome import is_duplicate, parse_action, render_welcome
 
 logger = logging.getLogger("actbot.welcome")
 
 __plugin_meta__ = PluginMetadata(
     name="welcome",
     description="入群欢迎（管理员可开关）",
-    usage="/欢迎 — 查看本群入群欢迎开关与欢迎语预览\n/欢迎 开|关 — 切换本群入群欢迎",
+    usage="/welcome — 查看本群入群欢迎开关与欢迎语预览\n/welcome on|off — 开启 / 关闭本群入群欢迎",
 )
 
 group_increase = on_notice(priority=10, block=False)
-welcome_cmd = on_command("欢迎", priority=10, block=True)
+welcome_cmd = on_command("welcome", priority=10, block=True)
 
 
 async def _member_label(bot: Bot, group_id: str, user_id: str) -> str:
@@ -102,19 +102,20 @@ async def _handle_welcome_cmd(bot: Bot, event: MessageEvent) -> None:
         await welcome_cmd.finish()  # 非管理员：静默，不暴露管理命令
     if not isinstance(event, GroupMessageEvent):
         await welcome_cmd.finish("这个命令要在群里用哦。")
-    parts = event.message.extract_plain_text().strip().split()
-    action = parts[1].strip() if len(parts) > 1 else ""
+    action = parse_action(event.message.extract_plain_text())
     group_id = str(event.group_id)
     settings = get_settings()
 
-    if action in ("开", "开启", "on"):
+    if action == "on":
         await groups.set_welcome_enabled(
             group_id, True, name=await _group_name(bot, group_id)
         )
         await welcome_cmd.finish("好，本群入群欢迎已开启。")
-    if action in ("关", "关闭", "off"):
+    if action == "off":
         await groups.set_welcome_enabled(group_id, False)
         await welcome_cmd.finish("好，本群入群欢迎已关闭。")
+    if action == "unknown":
+        await welcome_cmd.finish("用法：/welcome 查看状态；/welcome on 开启；/welcome off 关闭。")
 
     enabled = await groups.welcome_enabled(group_id)
     global_on = settings.feature("welcome")

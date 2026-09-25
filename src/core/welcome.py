@@ -9,6 +9,9 @@ import time
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+# 管理命令 /welcome 的子命令（命令名与参数一律英文，方便输入）
+VALID_ACTIONS = ("on", "off")
+
 # 同一个人短时间内重复入群事件只欢迎一次（协议端偶发重推）
 DEDUP_WINDOW_SECONDS = 60.0
 _recent: dict[tuple[str, str], float] = {}
@@ -55,6 +58,18 @@ def is_duplicate(group_id: str, user_id: str, now: float | None = None) -> bool:
             if moment - stamp > DEDUP_WINDOW_SECONDS:
                 _recent.pop(item, None)
     return False
+
+
+def parse_action(text: str) -> str:
+    """解析 /welcome 的子命令：""（查看状态）/ "on" / "off" / "unknown"。
+
+    第一段是命令本身（含前缀），忽略；只认第二段，大小写不敏感。
+    """
+    parts = text.strip().split()
+    if len(parts) < 2:
+        return ""
+    action = parts[1].strip().lower()
+    return action if action in VALID_ACTIONS else "unknown"
 
 
 def reset_dedup() -> None:

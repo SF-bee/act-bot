@@ -10,7 +10,7 @@ from src.core import permissions as perms
 __plugin_meta__ = PluginMetadata(
     name="admin",
     description="管理员命令（权限查看）",
-    usage="/权限 — 查看自己的权限与管理员名单",
+    usage="/op — 查看自己的权限与管理员名单",
 )
 
 permission_cmd = on_command("op", priority=10, block=True)
