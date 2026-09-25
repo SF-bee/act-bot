@@ -39,13 +39,26 @@ uv run python bot.py                # 本地启动（默认 127.0.0.1:8080）
 
 本机不需要安装任何原生 NapCat（社区 Mac 安装器属于实验项，不纳入验收）。
 
-## 5. 排障：真实端点连不上
+## 5. 保活（联调别再用前台会话跑）
+
+前台终端 / 带超时的任务跑 `bot.py`，进程一被带走，NapCat 那边就是刷屏的 `ECONNREFUSED`。
+用 LaunchAgent 托管（等价于 Linux 的 systemd unit，`KeepAlive` 自动重启）：
+
+```bash
+sed -e "s#__REPO_PATH__#$PWD#g" -e "s#__HOME__#$HOME#g" \
+    deploy/macos/com.actbot.dev.plist.template > ~/Library/LaunchAgents/com.actbot.dev.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.actbot.dev.plist
+```
+
+详见 `deploy/macos/README.md`（含停止、看日志、重启命令）。
+
+## 6. 排障：真实端点连不上
 
 - **NapCat 日志刷 `connect ECONNREFUSED ...:8080`**：业务层没起，或绑在 127.0.0.1（见上）；
 - **业务层报 `[Errno 48] address already in use`**：8080 被上次残留进程占着，先 `lsof -nP -iTCP:8080 -sTCP:LISTEN` 看清是谁；
 - 两侧 token 必须一致（`.env` 的 `ONEBOT_ACCESS_TOKEN` ↔ NapCat 反向 WS 的 token；本机联调可都留空）。
 
-## 6. 注意事项
+## 7. 注意事项
 
 - 本机 `data/` 只用于开发调试；**生产数据不要放在开发机上直接改**；
 - 提交前跑一遍 `uv run pytest -q` 与 `scripts/doctor.py`；

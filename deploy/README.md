@@ -7,7 +7,7 @@
 | `docker/` | `Dockerfile` + `docker-compose.yml`（napcat + act-bot）+ README | 已固化；`docker compose config` 校验通过 |
 | `linux/` | `act-bot.service`（systemd）+ README（含 NapCat 自启说明、ufw 示例） | 已固化；需在目标机 `systemctl` 实测 |
 | `windows/` | `install-act-bot-service.ps1`（NSSM）+ `start-act-bot.bat` + README | 已固化；需在 Windows 上实测 |
-| `macos/` | 无独立模板 —— 开发/联调见 `docs/deploy-macos-dev.md`（Docker Desktop 起 NapCat，或直接用 `docker/` 的 compose） | 不需要 |
+| `macos/` | `com.actbot.dev.plist.template`（LaunchAgent 保活）+ README | 已固化；已在本机实测（`kill -9` 后约 8 秒自动拉起） |
 
 ## 通用约定
 

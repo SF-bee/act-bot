@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.actbot.dev</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__REPO_PATH__/.venv/bin/python</string>
+    <string>bot.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>__REPO_PATH__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Docker Desktop 联调必须绑 0.0.0.0（容器经网关进来）；宿主机自测可改 127.0.0.1 -->
+    <key>HOST</key><string>0.0.0.0</string>
+    <key>PORT</key><string>8080</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/actbot-dev.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/actbot-dev.err.log</string>
+</dict>
+</plist>
