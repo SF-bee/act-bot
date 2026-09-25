@@ -33,6 +33,10 @@ _DEFAULT_FEATURES: dict[str, bool] = {
     "group_admin": True,
 }
 
+_DEFAULT_WELCOME_TEXT = (
+    "欢迎 {nickname} 加入 ACT 动漫社！先看看群公告，有问题随时在群里问～"
+)
+
 
 @dataclass(frozen=True)
 class AppSettings:
@@ -43,6 +47,8 @@ class AppSettings:
     protocol_ws_url: str = ""
     protocol_token: str = ""
     features: dict[str, bool] = field(default_factory=lambda: dict(_DEFAULT_FEATURES))
+    welcome_text: str = _DEFAULT_WELCOME_TEXT
+    welcome_at_newcomer: bool = True
     broadcast_interval_seconds: float = 3.0
     backup_daily_at: str = "03:00"
     backup_keep_daily_days: int = 30
@@ -113,6 +119,16 @@ def load_settings(
             raise ConfigError(f"功能开关 {key!r} 应为 true / false")
         features[key] = value
 
+    welcome = raw.get("welcome", {})
+    if not isinstance(welcome, dict):
+        raise ConfigError("[welcome] 段落格式错误：应为键值对")
+    welcome_text = welcome.get("text", _DEFAULT_WELCOME_TEXT)
+    if not isinstance(welcome_text, str) or not welcome_text.strip():
+        raise ConfigError("[welcome].text 应为非空字符串")
+    welcome_at_newcomer = welcome.get("at_newcomer", True)
+    if not isinstance(welcome_at_newcomer, bool):
+        raise ConfigError("[welcome].at_newcomer 应为 true / false")
+
     broadcast = raw.get("broadcast", {})
     interval = broadcast.get("interval_seconds", 3)
     if isinstance(interval, bool) or not isinstance(interval, (int, float)) or interval < 0:
@@ -133,6 +149,8 @@ def load_settings(
         protocol_ws_url=str(env.get("ACTBOT_PROTOCOL_WS_URL", "")).strip(),
         protocol_token=str(env.get("ACTBOT_PROTOCOL_TOKEN", "")).strip(),
         features=features,
+        welcome_text=welcome_text,
+        welcome_at_newcomer=welcome_at_newcomer,
         broadcast_interval_seconds=float(interval),
         backup_daily_at=daily_at,
         backup_keep_daily_days=int(keep_daily),

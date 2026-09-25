@@ -29,6 +29,16 @@ uv run python bot.py             # 启动机器人（默认监听 127.0.0.1:8080
 uv run python scripts/smoke_fake.py
 ```
 
+## 已实现功能
+
+| 功能 | 触发 | 说明 |
+| --- | --- | --- |
+| 入群欢迎 | 有人入群（`notice.group_increase`） | 自动 @ 新人 + 欢迎语；两级开关：全局 `[features].welcome`（config.toml）、群级「群内 `/欢迎 开` 或 `/欢迎 关`」；文案在 `[welcome].text`，支持占位符 `{nickname}` / `{group_name}` / `{user_id}`；同一人 60 秒内重复事件只欢迎一次 |
+| 连通性检查 | `/ping` | 回复 `pong` |
+| 版本信息 | `/version` | 版本号 + 已开启的功能开关数 |
+
+管理类命令（`/欢迎`）仅管理员可用，非管理员静默；其余命令的具体用法见各插件 `__plugin_meta__.usage`。
+
 ## 运行逻辑（改代码前先看这一节）
 
 ```

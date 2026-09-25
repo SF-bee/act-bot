@@ -15,6 +15,13 @@ broadcast = true      # 管理员广播
 archive = true        # 历届作品 / 资料查询
 group_admin = true    # 基础群管理
 
+[welcome]
+# 入群欢迎语（本文件是默认值；群级开关在数据库 groups.welcome_on，群内用 /欢迎 开|关）
+# 占位符：{nickname} 新人在群里的显示名、{group_name} 群名、{user_id} QQ 号
+text = "欢迎 {nickname} 加入 ACT 动漫社！先看看群公告，有问题随时在群里问～"
+# 发送时是否 @ 新人
+at_newcomer = true
+
 [broadcast]
 # 广播时群与群之间的发送间隔（秒），用于控制频率、降低风控
 interval_seconds = 3
