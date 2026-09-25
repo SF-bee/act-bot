@@ -14,6 +14,23 @@ import nonebot
 logger = logging.getLogger("actbot.bot")
 
 
+def _setup_project_logging(level: str) -> None:
+    """把本项目模块（actbot.*）的日志接到标准错误输出。
+
+    标准库 root logger 默认只有 WARNING 级别的 lastResort 兜底、且不挂 handler，
+    结果我们自己写的 INFO / DEBUG 日志会全部丢失（实测踩过：欢迎/聊天/审计的
+    诊断信息一条都看不到）。这里给 actbot 命名空间挂一个 handler 并跟随配置级别。
+    """
+    project = logging.getLogger("actbot")
+    project.setLevel(str(level or "INFO").upper())
+    if not project.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s | %(message)s", datefmt="%m-%d %H:%M:%S")
+        )
+        project.addHandler(handler)
+
+
 def main() -> None:
     from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
@@ -24,6 +41,8 @@ def main() -> None:
 
     nonebot.init()
     driver = nonebot.get_driver()
+
+    _setup_project_logging(str(driver.config.log_level))
     # 显式注册 OneBot v11 适配器（反向 WS 的接入路由由适配器提供）
     driver.register_adapter(OneBotV11Adapter)
 

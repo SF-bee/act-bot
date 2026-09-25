@@ -130,3 +130,22 @@ class AuditLog(Base):
     # 操作发生在哪个群；全局操作留空（迁移 002 增加）
     group_id: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[str] = mapped_column(String, default="")
+
+
+class ChatRule(Base):
+    """聊天引擎规则（迁移 003）：keyword / regex / mention / mention_more / mention_tired。
+
+    ``group_id`` 为空串表示全局默认规则；群级规则覆盖同 kind 的全局规则。
+    """
+
+    __tablename__ = "chat_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[str] = mapped_column(String, default="")
+    kind: Mapped[str] = mapped_column(String, default="keyword")
+    pattern: Mapped[str] = mapped_column(String, default="")
+    reply: Mapped[str] = mapped_column(Text)
+    weight: Mapped[int] = mapped_column(Integer, default=1)
+    enabled: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[str] = mapped_column(String, default="")

@@ -30,6 +30,17 @@ text = "欢迎 {nickname} 加入 ACT 动漫社！我是社团助理 {bot_name}�
 # 发送时是否 @ 新人
 at_newcomer = true
 
+[chat]
+# 聊天引擎（确定性机制，不接 LLM；群级开关用 /config chat on|off）
+# 关键词命中后的回应概率（0-1）；被 @ 时必定回应（不受此项影响）
+reply_probability = 0.6
+# 同一人在同一群的回应冷却（秒）：被 @ 与关键词共用，防止刷屏
+cooldown_seconds = 20
+# 连续被叫到第几次进入「被叫烦了」档位（>= 2）
+escalate_after = 3
+# 连续计数多久没再被叫就重新计数（秒）
+escalate_window_seconds = 120
+
 [broadcast]
 # 广播时群与群之间的发送间隔（秒），用于控制频率、降低风控
 interval_seconds = 3

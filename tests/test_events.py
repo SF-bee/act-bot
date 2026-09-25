@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     GroupRecallNoticeEvent,
     Message,
+    MessageSegment,
 )
 
 from src.core import events
@@ -96,6 +97,43 @@ def test_normalize_group_message():
     assert (result.group_id, result.user_id, result.text, result.is_group) == (
         "200", "300", "hello 你好", True,
     )
+
+
+def _group_message(segments, message_id: int = 10):
+    return GroupMessageEvent(
+        time=1, self_id=100, post_type="message", message_type="group", sub_type="normal",
+        message_id=message_id, user_id=300, group_id=200, message=Message(segments),
+        raw_message="", font=0, sender={"user_id": 300, "nickname": "X"},
+    )
+
+
+def test_normalize_marks_at_self():
+    result = normalize(_group_message([MessageSegment.at(100), MessageSegment.text("在吗")]))
+    assert result.at_self is True
+    assert result.text == "在吗"
+
+
+def test_normalize_detects_at_self_from_raw_message():
+    """真实协议端场景：@ 自己的段可能被从 message 里剥掉，只剩 raw_message。"""
+    event = GroupMessageEvent(
+        time=1, self_id=100, post_type="message", message_type="group", sub_type="normal",
+        message_id=12, user_id=300, group_id=200,
+        message=Message([MessageSegment.text("在吗")]),  # 注意：没有 at 段
+        raw_message="[CQ:at,qq=100] 在吗", font=0,
+        sender={"user_id": 300, "nickname": "X"},
+    )
+    result = normalize(event)
+    assert result.at_self is True
+    assert result.text == "在吗"
+
+
+def test_normalize_at_other_is_not_self():
+    result = normalize(_group_message([MessageSegment.at(999), MessageSegment.text("你好")]))
+    assert result.at_self is False
+
+
+def test_normalize_plain_message_is_not_at_self():
+    assert normalize(_group_message([MessageSegment.text("Yulia 早")])).at_self is False
 
 
 def test_normalize_unknown_event_returns_none():

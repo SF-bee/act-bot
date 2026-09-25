@@ -8,7 +8,9 @@
     4. 管理员发 /config welcome off → 期望回复已关闭；再发入群事件 → 期望被群级门控拦下；
     5. 管理员发 /config welcome on → 另一个人入群 → 期望再次欢迎；
     6. 管理员发 /audit → 期望能看到 config.set 审计记录；
-    7. 管理员发 /welcome on → 期望被引导到 /config（/welcome 只读，开关不重复实现）。
+    7. 管理员发 /welcome on → 期望被引导到 /config（/welcome 只读，开关不重复实现）；
+    8. Chat Engine：/config chat on 后 @ 机器人 → 期望收到聊天回应；
+    9. /config chat off 后 @ 机器人 → 期望被群级门控拦下。
 
 用法：
     uv run python scripts/smoke_events.py [--timeout 90] [--log-level DEBUG]
@@ -80,6 +82,17 @@ def build_group_message(text: str, user_id: int = ADMIN_QQ) -> dict:
         "sender": {"user_id": user_id, "nickname": "smoke", "card": "", "role": "owner"},
         "message": [{"type": "text", "data": {"text": text}}],
     }
+
+
+def build_mention_message(text: str, user_id: int = ADMIN_QQ) -> dict:
+    """构造一条 @ 了机器人的群消息（聊天引擎的唤醒方式之一）。"""
+    payload = build_group_message(text, user_id)
+    payload["message"] = [
+        {"type": "at", "data": {"qq": str(SELF_ID)}},
+        {"type": "text", "data": {"text": " " + text}},
+    ]
+    payload["raw_message"] = "[CQ:at,qq={0}] {1}".format(SELF_ID, text)
+    return payload
 
 
 def build_join_event(user_id: int) -> dict:
@@ -280,6 +293,28 @@ async def run_smoke(timeout: float, log_level: str = "INFO") -> int:
                 "config welcome on" in hint_text,
                 hint_text[:70].replace("\n", " | "),
             )
+
+            # 7. Chat Engine：开启后 @ 必回
+            await connection.send(json.dumps(build_group_message("/config chat on"), ensure_ascii=False))
+            chat_on = await drain(connection, quiet=0.8, max_wait=4.0)
+            chat_on_text = extract_text(chat_on[-1]["params"].get("message")) if chat_on else ""
+            check("/config chat on 生效", "开启" in chat_on_text, chat_on_text[:50])
+
+            await connection.send(json.dumps(build_mention_message("在吗"), ensure_ascii=False))
+            mentioned = await drain(connection, quiet=1.2, max_wait=6.0)
+            mention_text = extract_text(mentioned[-1]["params"].get("message")) if mentioned else ""
+            check(
+                "@ 唤醒收到聊天回应",
+                bool(mention_text) and "用法" not in mention_text and "/config" not in mention_text,
+                mention_text[:40],
+            )
+
+            # 8. 关掉 chat 后 @ 不再回应（群级门控）
+            await connection.send(json.dumps(build_group_message("/config chat off"), ensure_ascii=False))
+            await drain(connection, quiet=0.8, max_wait=4.0)
+            await connection.send(json.dumps(build_mention_message("还在吗"), ensure_ascii=False))
+            gated_chat = await drain(connection, quiet=0.8, max_wait=3.0)
+            check("chat 关闭后 @ 不再回应", not gated_chat, "收到 {0} 条发送".format(len(gated_chat)))
     except Exception as exc:  # noqa: BLE001 - 冒烟工具：展示所有异常
         failure = f"{type(exc).__name__}: {exc}"
         print(f"❌ 冒烟异常：{failure}")

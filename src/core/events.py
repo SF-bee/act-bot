@@ -43,6 +43,7 @@ class MessageReceived(DomainEvent):
     message_id: str = ""
     text: str = ""
     is_group: bool = True
+    at_self: bool = False  # 消息里是否 @ 了机器人（聊天引擎的唤醒方式之一）
     raw: Any = None
 
 
@@ -101,6 +102,34 @@ class MemberUnmuted(DomainEvent):
     raw: Any = None
 
 
+def _mentions_self(event: Any) -> bool:
+    """消息里是否 @ 了机器人。
+
+    两个来源都看，缺一不可：
+    - ``raw_message``（CQ 文本，协议端必给）——**最可靠**：实测某些协议端/适配器
+      会把 @ 机器人自己的段从 ``message`` 里剥掉，只剩 ``raw_message`` 还留着；
+    - ``message`` 消息段——兼容不带 raw_message 的极简实现。
+    """
+    self_id = str(getattr(event, "self_id", "") or "")
+    if not self_id:
+        return False
+    raw = str(getattr(event, "raw_message", "") or "")
+    for pattern in ("[CQ:at,qq={0}]", '[CQ:at,qq="{0}"]'):
+        if pattern.format(self_id) in raw:
+            return True
+    try:
+        segments = list(getattr(event, "message", None))
+    except TypeError:  # 没有消息段列表：只按 raw_message 判断
+        return False
+    for segment in segments:
+        if getattr(segment, "type", "") != "at":
+            continue
+        data = getattr(segment, "data", {}) or {}
+        if str(data.get("qq", "")) == self_id:
+            return True
+    return False
+
+
 def normalize(event: Any) -> DomainEvent | None:
     """OneBot 事件 → 领域事件；不关心的事件返回 None（纯函数，便于测试）。"""
     from nonebot.adapters.onebot.v11 import (
@@ -119,6 +148,7 @@ def normalize(event: Any) -> DomainEvent | None:
             message_id=str(event.message_id),
             text=event.message.extract_plain_text(),
             is_group=True,
+            at_self=_mentions_self(event),
             raw=event,
         )
     if isinstance(event, GroupIncreaseNoticeEvent):
@@ -297,5 +327,10 @@ async def ingest(event: Any, bot: Any = None) -> DispatchReport | None:
     domain = normalize(event)
     if domain is None:
         return None
-    return await dispatch(domain, bot)
+    report = await dispatch(domain, bot)
+    logger.debug(
+        "分发 %s：匹配 %d｜投递 %d｜门控 %d｜冷却 %d｜失败 %d",
+        report.event_type, report.matched, report.delivered, report.gated, report.cooled, report.failed,
+    )
+    return report
 

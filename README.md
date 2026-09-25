@@ -38,6 +38,7 @@ uv run python scripts/smoke_fake.py
 | --- | --- | --- |
 | 帮助菜单 | `/help` | 命令清单由各插件的 `PluginMetadata` 自动汇总；**普通成员与管理员看到的内容不同**（管理员多一段「管理员命令」） |
 | 入群欢迎 | 有人入群（`notice.group_increase`） | 自动 @ 新人 + 欢迎语；两级开关：全局 `[features].welcome`（config.toml）、群级「群内 `/config welcome on|off`」（`/welcome` 只读，看状态与预览）；文案在 `[welcome].text`，支持占位符 `{nickname}` / `{group_name}` / `{user_id}`；同一人 60 秒内重复事件只欢迎一次 |
+| 聊天互动 | `@` 机器人，或消息里含关键词 | **确定性机制，不接 AI**：被 @ 必回且随连续被叫分档（mention → mention_more → mention_tired）；关键词按 `[chat].reply_probability` 概率回；同人同群 `[chat].cooldown_seconds` 内不打扰；规则存 `chat_rules` 表，用 `/chat add` / `/chat list` / `/chat del` 维护（群级规则覆盖全局，`-g` 写全局默认）；开关走 `/config chat on|off` |
 | 群功能开关 | `/config`、`/config <功能> on|off` | 管理员可按群开关功能（写 `groups.features`）；功能名册见 `src/core/features.py`，新增功能不用改命令 |
 | 管理操作审计 | `/audit [n]` | 谁在哪个群做了什么（改配置等），管理员可查；写入见 `src/core/audit.py` |
 | 事件中枢 | —（无命令） | 事件先经 `src/core/events.py` 规范化，再按群级功能开关分发；新功能用 `subscribe(...)` 注册，**不要**直接挂 OneBot 事件 |
