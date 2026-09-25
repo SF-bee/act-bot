@@ -1,20 +1,14 @@
-"""入群欢迎的纯逻辑：消息渲染 + 短时去重。
+"""入群欢迎的纯逻辑：欢迎语渲染 + 命令参数解析。
 
-放在 core 而非插件里：这些函数不依赖 nonebot 的插件机制（matcher 注册），
-可以单独测试；插件只负责事件接线与权限判断。
+放在 core 而非插件里：这些函数不依赖 nonebot 的插件机制（matcher 注册），可以单独测试。
+重复入群事件的防护已上移到事件中枢的 cooldown（见 src/core/events.py），这里不再自带去重。
 """
 from __future__ import annotations
-
-import time
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 # 管理命令 /welcome 的子命令（命令名与参数一律英文，方便输入）
 VALID_ACTIONS = ("on", "off")
-
-# 同一个人短时间内重复入群事件只欢迎一次（协议端偶发重推）
-DEDUP_WINDOW_SECONDS = 60.0
-_recent: dict[tuple[str, str], float] = {}
 
 
 def render_welcome(
@@ -45,21 +39,6 @@ def render_welcome(
     return message
 
 
-def is_duplicate(group_id: str, user_id: str, now: float | None = None) -> bool:
-    """同一（群, 人）在窗口期内重复出现则返回 True；同时刷新最近记录。"""
-    moment = time.monotonic() if now is None else now
-    key = (str(group_id), str(user_id))
-    last = _recent.get(key)
-    if last is not None and moment - last < DEDUP_WINDOW_SECONDS:
-        return True
-    _recent[key] = moment
-    if len(_recent) > 512:  # 顺手清理，避免长期运行无限增长
-        for item, stamp in list(_recent.items()):
-            if moment - stamp > DEDUP_WINDOW_SECONDS:
-                _recent.pop(item, None)
-    return False
-
-
 def parse_action(text: str) -> str:
     """解析 /welcome 的子命令：""（查看状态）/ "on" / "off" / "unknown"。
 
@@ -70,9 +49,4 @@ def parse_action(text: str) -> str:
         return ""
     action = parts[1].strip().lower()
     return action if action in VALID_ACTIONS else "unknown"
-
-
-def reset_dedup() -> None:
-    """清空去重记录（测试用）。"""
-    _recent.clear()
 

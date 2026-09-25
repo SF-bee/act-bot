@@ -1,34 +1,26 @@
-"""welcome：入群欢迎。
+"""welcome：入群欢迎（事件中枢的第一个消费者）。
 
-有人入群（notice.group_increase）时自动发欢迎语。两级开关：
-- 全局：config/config.toml 的 [features].welcome（关掉则整个功能不响应）
-- 群级：groups.features["welcome"]（群内用 /welcome on|off，或 /config welcome on|off）
+- 订阅 `GroupMemberJoin`（feature=welcome，cooldown=60 防协议端重复推送）
+- 两级开关：全局 `[features].welcome`（config.toml）＋ 群级 groups.features["welcome"]
+- 管理员命令：`/welcome`（状态 + 预览）、`/welcome on|off`
 
-管理员命令：
-- /欢迎            查看本群开关与欢迎语预览
-- /欢迎 开|关      切换本群入群欢迎
-
-渲染与去重的纯逻辑在 src/core/welcome.py；本文件只做接线与权限判断。
+群级门控与 cooldown 由事件中枢统一处理，本文件不再直接挂 OneBot 事件；
+渲染逻辑在 src/core/welcome.py。
 """
 from __future__ import annotations
 
 import logging
 
-from nonebot import on_command, on_notice
-from nonebot.adapters.onebot.v11 import (
-    Bot,
-    GroupIncreaseNoticeEvent,
-    GroupMessageEvent,
-    MessageEvent,
-    MessageSegment,
-    NoticeEvent,
-)
+from nonebot import on_command
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
 
-from src.core import groups
+from src.core import audit, features, groups
 from src.core import permissions as perms
 from src.core.config import get_settings
-from src.core.welcome import is_duplicate, parse_action, render_welcome
+from src.core.events import GroupMemberJoin, subscribe
+from src.core.onebot import safe_group_name, safe_member_label
+from src.core.welcome import parse_action, render_welcome
 
 logger = logging.getLogger("actbot.welcome")
 
@@ -39,67 +31,41 @@ __plugin_meta__ = PluginMetadata(
     extra={"role": "admin", "order": 110},
 )
 
-group_increase = on_notice(priority=10, block=False)
 welcome_cmd = on_command("welcome", priority=10, block=True)
 
 
-async def _member_label(bot: Bot, group_id: str, user_id: str) -> str:
-    """新人在群里的显示名（群名片优先）；取不到则退回 QQ 号。"""
-    try:
-        info = await bot.get_group_member_info(
-            group_id=int(group_id), user_id=int(user_id), no_cache=True
-        )
-        return str(info.get("card") or info.get("nickname") or user_id)
-    except Exception:  # noqa: BLE001 - 取昵称失败不影响欢迎
-        logger.debug("获取群成员信息失败，退回 QQ 号：group=%s user=%s", group_id, user_id)
-        return user_id
-
-
-async def _group_name(bot: Bot, group_id: str) -> str:
-    """群名；取不到则返回空串。"""
-    try:
-        info = await bot.get_group_info(group_id=int(group_id))
-        return str(info.get("group_name") or "")
-    except Exception:  # noqa: BLE001 - 取群名失败不影响欢迎
-        logger.debug("获取群信息失败：group=%s", group_id)
-        return ""
-
-
-@group_increase.handle()
-async def _handle_group_increase(bot: Bot, event: NoticeEvent) -> None:
-    if not isinstance(event, GroupIncreaseNoticeEvent):
-        return
+@subscribe(
+    GroupMemberJoin,
+    feature=features.FEATURE_WELCOME,
+    cooldown=60,
+    name="welcome",
+)
+async def _on_member_join(event: GroupMemberJoin, bot: Bot) -> None:
+    """有人入群 → @ 新人并发送欢迎语（群级开关由中枢门控）。"""
     settings = get_settings()
-    if not settings.feature("welcome"):
+    if not settings.feature(features.FEATURE_WELCOME):
         return
-    group_id, user_id = str(event.group_id), str(event.user_id)
-    if user_id == str(event.self_id):
-        logger.info("机器人自身被拉入群 %s，跳过欢迎", group_id)
-        return
-    if is_duplicate(group_id, user_id):
-        logger.debug("忽略重复入群事件：group=%s user=%s", group_id, user_id)
-        return
-    if not await groups.welcome_enabled(group_id):
-        logger.info("群 %s 已关闭入群欢迎，跳过", group_id)
+    if event.user_id == str(getattr(bot, "self_id", "")):
+        logger.info("机器人自身被拉入群 %s，跳过欢迎", event.group_id)
         return
     message = render_welcome(
         settings.welcome_text,
-        nickname=await _member_label(bot, group_id, user_id),
-        group_name=await _group_name(bot, group_id),
-        user_id=user_id,
+        nickname=await safe_member_label(bot, event.group_id, event.user_id),
+        group_name=await safe_group_name(bot, event.group_id),
+        user_id=event.user_id,
         at_newcomer=settings.welcome_at_newcomer,
     )
     try:
-        await bot.send_group_msg(group_id=event.group_id, message=message)
-    except Exception:  # noqa: BLE001 - 发送失败只记日志，不影响其它事件处理
-        logger.exception("发送入群欢迎失败：group=%s user=%s", group_id, user_id)
+        await bot.send_group_msg(group_id=int(event.group_id), message=message)
+    except Exception:  # noqa: BLE001 - 发送失败只记日志
+        logger.exception("发送入群欢迎失败：group=%s user=%s", event.group_id, event.user_id)
         return
-    logger.info("已发送入群欢迎：group=%s user=%s", group_id, user_id)
+    logger.info("已发送入群欢迎：group=%s user=%s", event.group_id, event.user_id)
 
 
 @welcome_cmd.handle()
 async def _handle_welcome_cmd(bot: Bot, event: MessageEvent) -> None:
-    if await perms.get_role(str(event.user_id)) is None:
+    if not await perms.is_admin(str(event.user_id)):
         await welcome_cmd.finish()  # 非管理员：静默，不暴露管理命令
     if not isinstance(event, GroupMessageEvent):
         await welcome_cmd.finish("这个命令要在群里用哦。")
@@ -107,23 +73,28 @@ async def _handle_welcome_cmd(bot: Bot, event: MessageEvent) -> None:
     group_id = str(event.group_id)
     settings = get_settings()
 
-    if action == "on":
-        await groups.set_welcome_enabled(
-            group_id, True, name=await _group_name(bot, group_id)
+    if action in ("on", "off"):
+        enabled = action == "on"
+        group_name = await safe_group_name(bot, group_id)
+        await groups.set_feature(
+            group_id, features.FEATURE_WELCOME, enabled, group_name=group_name
         )
-        await welcome_cmd.finish("好，本群入群欢迎已开启。")
-    if action == "off":
-        await groups.set_welcome_enabled(group_id, False)
-        await welcome_cmd.finish("好，本群入群欢迎已关闭。")
+        await audit.record(
+            "welcome.on" if enabled else "welcome.off",
+            actor_qq=str(event.user_id),
+            group_id=group_id,
+            detail=group_name,
+        )
+        await welcome_cmd.finish("好，本群入群欢迎已开启。" if enabled else "好，本群入群欢迎已关闭。")
     if action == "unknown":
         await welcome_cmd.finish("用法：/welcome 查看状态；/welcome on 开启；/welcome off 关闭。")
 
-    enabled = await groups.welcome_enabled(group_id)
-    global_on = settings.feature("welcome")
+    enabled = await groups.feature_enabled(group_id, features.FEATURE_WELCOME)
+    global_on = settings.feature(features.FEATURE_WELCOME)
     preview = render_welcome(
         settings.welcome_text,
         nickname="新同学",
-        group_name=await _group_name(bot, group_id),
+        group_name=await safe_group_name(bot, group_id),
         user_id=str(event.user_id),
         at_newcomer=settings.welcome_at_newcomer,
     )

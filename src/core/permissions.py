@@ -31,6 +31,11 @@ async def get_role(qq: str | int) -> str | None:
         return row.role if row else None
 
 
+async def is_admin(qq: str | int) -> bool:
+    """是否为管理员（owner 或 admin）——管理命令的通用入口检查。"""
+    return await get_role(qq) is not None
+
+
 async def has_role(qq: str | int, required: str) -> bool:
     """判断该 QQ 是否达到 ``required`` 角色（等级比较）。"""
     if required not in ROLE_ORDER:

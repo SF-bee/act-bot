@@ -127,4 +127,6 @@ class AuditLog(Base):
     qq: Mapped[str] = mapped_column(String, default="")
     action: Mapped[str] = mapped_column(String)
     detail: Mapped[str] = mapped_column(Text, default="")
+    # 操作发生在哪个群；全局操作留空（迁移 002 增加）
+    group_id: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[str] = mapped_column(String, default="")

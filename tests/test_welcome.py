@@ -54,14 +54,6 @@ def test_parse_action():
     assert parse_action("/welcome whatever") == "unknown"
 
 
-def test_welcome_dedup_window():
-    from src.core.welcome import is_duplicate
-
-    assert is_duplicate("100", "200", now=1000.0) is False
-    assert is_duplicate("100", "200", now=1001.0) is True
-    assert is_duplicate("100", "200", now=2000.0) is False
-
-
 async def test_group_welcome_default_enabled(fresh_db):
     assert await groups.welcome_enabled("123456789") is True
 
