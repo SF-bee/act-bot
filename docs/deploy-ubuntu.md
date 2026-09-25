@@ -11,7 +11,8 @@
 
 ## 1. 方式 A（推荐）：Docker Compose
 
-> TODO（实施时完善）：以 napcat-docker 官方文档为准，把 compose 模板固化到 `deploy/docker/`。
+> 模板已固化：`deploy/docker/docker-compose.yml`（napcat + act-bot 两个服务，端口仅绑 127.0.0.1）。
+> 详细步骤见 `deploy/docker/README.md`，本文件只列要点。
 
 1. 部署 NapCat 容器（Linux amd64 / arm64 镜像），挂载持久化数据卷；
 2. WebUI（6099）仅内网访问（安全组 / ufw 限制，切勿裸奔公网）；
@@ -40,7 +41,8 @@
    uv run python scripts/bootstrap_admin.py
    ```
 
-3. 自启（systemd，模板 `deploy/linux/`，实施时补全）：`napcat.service` + `act-bot.service`。
+3. 自启：业务层用 `deploy/linux/act-bot.service`（systemd，安装步骤见 `deploy/linux/README.md`）；
+   协议端按路线走——原生一键脚本自带 systemd 服务，Docker 路线由 `restart: unless-stopped` 兜底（**本仓库不提供 napcat.service**，原因见该 README）。
 
 ## 3. 防火墙与安全
 

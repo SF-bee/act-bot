@@ -29,6 +29,8 @@ uv run python bot.py                # 本地启动（默认 127.0.0.1:8080）
 
 1. **Fake OneBot（默认）**：`scripts/smoke_fake.py` 内置；离线开发全部业务功能。
 2. **本地真实联调（推荐）**：Docker Desktop 跑 Linux 版 NapCat 容器（arm64 镜像）——
+   直接复用模板：`docker compose -f deploy/docker/docker-compose.yml up -d napcat`
+   （只起协议端；业务层仍在宿主机跑，反向 WS 指向 `ws://host.docker.internal:8080/onebot/v11/ws`）；
    在容器 WebUI（6099 端口）扫码登录一个**测试小号**；
    注意 macOS Docker 的 UID/GID、挂载语义与 Linux 主机不同（见 `docs/platform-notes.md`）。
 3. **远程联调（可选）**：连后续 Ubuntu 测试机上的协议端（内网 / SSH 隧道；不要裸奔公网）。

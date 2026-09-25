@@ -1,0 +1,37 @@
+# ACT Bot 业务层 systemd 单元（Ubuntu 22.04 / 24.04）
+#
+# 安装：
+#   sudo useradd -r -m -d /opt/act-bot -s /usr/sbin/nologin actbot   # 专用账号，按需调整
+#   sudo -u actbot /usr/local/bin/uv sync --locked --no-dev           # 在 /opt/act-bot 下建 .venv
+#   sudo cp deploy/linux/act-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now act-bot
+# 查看：systemctl status act-bot ｜ journalctl -u act-bot -f
+#
+# 说明：路径 /opt/act-bot 与账号 actbot 是部署约定（非业务代码硬编码），
+#       按实际部署目录/账号修改；QQ 号、token 一律来自 EnvironmentFile 的 .env。
+
+[Unit]
+Description=ACT Bot (NoneBot2 / OneBot v11 反向 WS)
+Documentation=file:/opt/act-bot/docs/deploy-ubuntu.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=actbot
+Group=actbot
+WorkingDirectory=/opt/act-bot
+EnvironmentFile=/opt/act-bot/.env
+# 直接用项目内 .venv 解释器，运行时不依赖 uv/网络
+ExecStart=/opt/act-bot/.venv/bin/python /opt/act-bot/bot.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=act-bot
+# 基础加固（业务层不需要特权）
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

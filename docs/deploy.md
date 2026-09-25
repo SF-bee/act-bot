@@ -10,6 +10,16 @@
 | 生产（Ubuntu 22.04 / 24.04，推荐） | `deploy-ubuntu.md` |
 | 接管（Windows 10 / 11） | `deploy-windows.md` |
 
+## 已固化模板（`deploy/`）
+
+| 平台 | 模板 |
+| --- | --- |
+| Docker（Ubuntu 推荐 / macOS / Windows） | `deploy/docker/`（compose：napcat + act-bot） |
+| Ubuntu 原生（systemd） | `deploy/linux/act-bot.service` |
+| Windows（NSSM 服务） | `deploy/windows/install-act-bot-service.ps1` |
+
+模板不含凭据；凭据只在 `.env`。
+
 ## 部署 = 两件事
 
 1. **协议端**：按平台各自的方式装 NapCat（三平台方式互不相同，见对应文档）；

@@ -3,6 +3,7 @@
 ## 通用（业务层）
 
 - [ ] `uv run pytest -q` 全绿
+- [ ] （Docker 路线）`docker compose -f deploy/docker/docker-compose.yml config` 通过
 - [ ] `uv run python scripts/doctor.py` 全绿
 - [ ] `uv run python scripts/smoke_fake.py` 通过（Fake 端到端）
 - [ ] `scripts/backup.py` 能生成备份；`scripts/restore.py` 能恢复

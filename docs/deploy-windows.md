@@ -32,10 +32,10 @@ uv run python bot.py
 
 ## 3. 自启（二选一）
 
-- NSSM / WinSW 把 `uv run python bot.py` 注册为 Windows 服务（推荐）；
+- NSSM：用 `deploy/windows/install-act-bot-service.ps1`（管理员 PowerShell，`-Action install`；卸载 `-Action uninstall`）；
 - "任务计划程序"登录时启动（简单但不够稳）。
 
-（模板见 `deploy/windows/`，实施时补全。）
+（模板与参数说明见 `deploy/windows/README.md`；脚本需在 Windows 上实测。）
 
 ## 4. 平台注意（详见 `docs/platform-notes.md`）
 

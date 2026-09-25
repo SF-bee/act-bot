@@ -1,0 +1,21 @@
+# 构建上下文排除项（镜像只需业务代码 + 依赖描述 + 运维脚本）
+.git
+.gitignore
+.gitattributes
+.github
+.venv
+.pytest_cache
+.ruff_cache
+.mypy_cache
+__pycache__
+*.py[cod]
+*.egg-info
+.env
+.env.*
+!.env.example
+config/config.toml
+data
+deploy/docker/runtime
+docs
+notes
+.DS_Store

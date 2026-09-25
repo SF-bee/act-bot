@@ -1,10 +1,17 @@
 # deploy/
 
-分平台部署资源目录（按需完善；当前指引见 `docs/deploy*.md`）：
+分平台部署资源（**已固化，不再是占位**）：
 
-- `linux/` —— systemd unit 模板（napcat.service / act-bot.service）
-- `windows/` —— 服务安装脚本（NSSM / WinSW）与启动 bat 模板
-- `docker/` —— docker-compose 模板（napcat + act-bot）
-- `macos/` —— 开发辅助说明（可选）
+| 目录 | 内容 | 状态 |
+| --- | --- | --- |
+| `docker/` | `Dockerfile` + `docker-compose.yml`（napcat + act-bot）+ README | 已固化；`docker compose config` 校验通过 |
+| `linux/` | `act-bot.service`（systemd）+ README（含 NapCat 自启说明、ufw 示例） | 已固化；需在目标机 `systemctl` 实测 |
+| `windows/` | `install-act-bot-service.ps1`（NSSM）+ `start-act-bot.bat` + README | 已固化；需在 Windows 上实测 |
+| `macos/` | 无独立模板 —— 开发/联调见 `docs/deploy-macos-dev.md`（Docker Desktop 起 NapCat，或直接用 `docker/` 的 compose） | 不需要 |
 
-> P0 阶段先占位；部署实施时固化具体模板，并同步 `docs/deploy-*.md`。
+## 通用约定
+
+- 模板里**不含** QQ 号、token、机器绝对路径；凭据一律来自仓库根 `.env`（不入库）；
+- 部署路径（如 `/opt/act-bot`、`C:\act-bot`）是运维约定，可按实际修改；
+- 部署完成后按 `docs/acceptance.md` 逐项打勾；
+- 平台差异（尤其协议端）先读 `docs/platform-notes.md`。

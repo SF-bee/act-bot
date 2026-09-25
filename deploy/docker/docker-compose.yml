@@ -1,0 +1,57 @@
+# ACT Bot 部署 Compose 模板（业务层 + 协议端）
+#
+# 适用：Ubuntu 22.04 / 24.04（推荐，生产）｜ macOS Docker Desktop（联调）｜ Windows Docker Desktop + WSL2
+# 用法与平台差异见同目录 README.md
+#
+# 约定：
+#   - 本文件不含 QQ 号 / token / 机器绝对路径，凭据一律经 .env 注入；
+#   - 协议端与业务层同处一个 bridge 网络，反向 WS 走服务名 act-bot；
+#   - 6099 / 3001 仅绑定 127.0.0.1（用 SSH 隧道访问），绝不裸露公网。
+
+name: act-bot
+
+services:
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: act-napcat
+    restart: unless-stopped
+    environment:
+      # Linux 宿主：NAPCAT_UID=$(id -u) NAPCAT_GID=$(id -g) docker compose up -d
+      # Windows / macOS：保持默认（Docker Desktop 下 UID/GID 语义不同，见 README）
+      NAPCAT_UID: "${NAPCAT_UID:-1000}"
+      NAPCAT_GID: "${NAPCAT_GID:-1000}"
+    volumes:
+      # NapCat 配置 / 插件 / QQ 登录态必须持久化，否则每次重建都要重新扫码
+      - ./runtime/napcat/config:/app/napcat/config
+      - ./runtime/napcat/plugins:/app/napcat/plugins
+      - ./runtime/ntqq:/app/.config/QQ
+    ports:
+      - "127.0.0.1:6099:6099"   # WebUI（扫码登录 / 网络配置）
+      - "127.0.0.1:3001:3001"   # OneBot 正向 WS（仅 scripts/smoke_protocol.py 联调需要）
+    networks:
+      - actnet
+
+  act-bot:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: act-bot:local
+    container_name: act-bot
+    restart: unless-stopped
+    env_file:
+      # 默认读仓库根 .env（含 ONEBOT_ACCESS_TOKEN 等凭据，不入库）
+      - ${ACTBOT_ENV_FILE:-../../.env}
+    environment:
+      # 容器内必须监听 0.0.0.0，协议端才能连进来；宿主机开发时仍用 127.0.0.1
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      ACTBOT_DATA_DIR: /app/data
+      ACTBOT_TIMEZONE: ${ACTBOT_TIMEZONE:-Asia/Shanghai}
+    volumes:
+      - ./runtime/act-bot-data:/app/data
+    networks:
+      - actnet
+
+networks:
+  actnet:
+    driver: bridge
