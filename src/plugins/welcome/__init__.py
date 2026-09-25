@@ -2,7 +2,7 @@
 
 有人入群（notice.group_increase）时自动发欢迎语。两级开关：
 - 全局：config/config.toml 的 [features].welcome（关掉则整个功能不响应）
-- 群级：groups 表的 welcome_on（群内用 /欢迎 开|关）
+- 群级：groups.features["welcome"]（群内用 /welcome on|off，或 /config welcome on|off）
 
 管理员命令：
 - /欢迎            查看本群开关与欢迎语预览

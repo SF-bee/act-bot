@@ -1,6 +1,8 @@
 """入群欢迎测试：消息渲染（纯函数）+ 群级开关（数据库）+ 配置解析。"""
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from src.core import config, groups
@@ -68,11 +70,13 @@ async def test_group_welcome_toggle(fresh_db):
     await groups.set_welcome_enabled("123456789", False, name="测试群")
     assert await groups.welcome_enabled("123456789") is False
     row = await groups.get_group("123456789")
-    assert row is not None and row.name == "测试群" and row.welcome_on == 0
+    assert row is not None and row.name == "测试群"
+    assert json.loads(row.features)[groups.FEATURE_WELCOME] is False
     await groups.set_welcome_enabled("123456789", True)
     assert await groups.welcome_enabled("123456789") is True
     row = await groups.get_group("123456789")
-    assert row is not None and row.welcome_on == 1 and row.name == "测试群"
+    assert row is not None and row.name == "测试群"
+    assert json.loads(row.features)[groups.FEATURE_WELCOME] is True
 
 
 def test_welcome_config_defaults(tmp_path):

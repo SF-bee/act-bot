@@ -4,22 +4,16 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from sqlalchemy import select
 
 from src.core import db
+from src.core.db import utc_now  # 时间戳唯一来源（本模块历史上自己实现过一份）
 from src.models.tables import Admin
 
 ROLE_ADMIN = "admin"
 ROLE_OWNER = "owner"
 VALID_ROLES = (ROLE_ADMIN, ROLE_OWNER)
 ROLE_ORDER = {ROLE_ADMIN: 1, ROLE_OWNER: 2}
-
-
-def utc_now() -> str:
-    """统一的 UTC 时间字符串（ISO-8601，秒级）。"""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _normalize_qq(qq: str | int) -> str:

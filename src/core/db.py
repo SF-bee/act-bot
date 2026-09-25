@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -22,6 +23,15 @@ from sqlalchemy.ext.asyncio import (
 from .paths import db_path, ensure_dir
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+
+
+def utc_now() -> str:
+    """统一的 UTC 时间字符串（ISO-8601，秒级）。
+
+    时间戳的唯一来源：permissions / groups / audit 等模块都从这里取，
+    保证各表 ``created_at`` 格式一致（便于比较与交接导出）。
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ---------- 同步工具（迁移 / 完整性检查 / 备份脚本使用） ----------

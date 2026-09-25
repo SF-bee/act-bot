@@ -34,8 +34,8 @@ class Group(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     group_id: Mapped[str] = mapped_column(String, unique=True)
     name: Mapped[str] = mapped_column(String, default="")
+    # 群级功能开关：JSON 文本，形如 {"welcome": true, "chat": false}
     features: Mapped[str] = mapped_column(Text, default="{}")
-    welcome_on: Mapped[int] = mapped_column(Integer, default=1)
     active: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[str] = mapped_column(String, default="")
 
