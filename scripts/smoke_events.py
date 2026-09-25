@@ -7,7 +7,8 @@
     3. 同一个人再入群一次 → 期望因 cooldown 不再欢迎；
     4. 管理员发 /config welcome off → 期望回复已关闭；再发入群事件 → 期望被群级门控拦下；
     5. 管理员发 /config welcome on → 另一个人入群 → 期望再次欢迎；
-    6. 管理员发 /audit → 期望能看到 config.set 审计记录。
+    6. 管理员发 /audit → 期望能看到 config.set 审计记录；
+    7. 管理员发 /welcome on → 期望被引导到 /config（/welcome 只读，开关不重复实现）。
 
 用法：
     uv run python scripts/smoke_events.py [--timeout 90] [--log-level DEBUG]
@@ -269,6 +270,16 @@ async def run_smoke(timeout: float, log_level: str = "INFO") -> int:
             audit_reply = await drain(connection, quiet=0.8, max_wait=4.0)
             audit_text = extract_text(audit_reply[-1]["params"].get("message")) if audit_reply else ""
             check("审计记录可见 config.set", "config.set" in audit_text, audit_text[:80].replace("\n", " | "))
+
+            # 6. /welcome 只读：带开关参数应被引导到 /config
+            await connection.send(json.dumps(build_group_message("/welcome on"), ensure_ascii=False))
+            hint = await drain(connection, quiet=0.8, max_wait=4.0)
+            hint_text = extract_text(hint[-1]["params"].get("message")) if hint else ""
+            check(
+                "/welcome 引导到 /config（开关不再重复实现）",
+                "config welcome on" in hint_text,
+                hint_text[:70].replace("\n", " | "),
+            )
     except Exception as exc:  # noqa: BLE001 - 冒烟工具：展示所有异常
         failure = f"{type(exc).__name__}: {exc}"
         print(f"❌ 冒烟异常：{failure}")

@@ -75,11 +75,6 @@ async def welcome_enabled(group_id: str | int) -> bool:
     return await feature_enabled(group_id, FEATURE_WELCOME)
 
 
-async def set_welcome_enabled(group_id: str | int, enabled: bool, name: str = "") -> None:
-    """设置群级入群欢迎开关。"""
-    await set_feature(group_id, FEATURE_WELCOME, enabled, group_name=name)
-
-
 def parse_feature_command(text: str) -> tuple[str, str]:
     """解析 ``/config <feature> on|off``：返回 (feature, action)。
 

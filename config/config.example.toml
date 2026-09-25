@@ -23,7 +23,7 @@ title = "ACT 动漫社助理"
 aliases = ["尤莉娅", "尤莉", "小尤"]
 
 [welcome]
-# 入群欢迎语（本文件是默认值；群级开关在 groups.features，用 /config welcome on|off 或 /welcome on|off）
+# 入群欢迎语（本文件是默认值；群级开关在 groups.features，用 /config welcome on|off）
 # 占位符：{nickname} 新人在群里的显示名、{group_name} 群名、{user_id} QQ 号、
 #         {bot_name} 机器人人设名、{bot_title} 机器人身份
 text = "欢迎 {nickname} 加入 ACT 动漫社！我是社团助理 {bot_name}，先看看群公告，有问题随时在群里问～"

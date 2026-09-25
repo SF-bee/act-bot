@@ -78,12 +78,12 @@ async def test_group_welcome_default_enabled(fresh_db):
 
 
 async def test_group_welcome_toggle(fresh_db):
-    await groups.set_welcome_enabled("123456789", False, name="测试群")
+    await groups.set_feature("123456789", groups.FEATURE_WELCOME, False, group_name="测试群")
     assert await groups.welcome_enabled("123456789") is False
     row = await groups.get_group("123456789")
     assert row is not None and row.name == "测试群"
     assert json.loads(row.features)[groups.FEATURE_WELCOME] is False
-    await groups.set_welcome_enabled("123456789", True)
+    await groups.set_feature("123456789", groups.FEATURE_WELCOME, True)
     assert await groups.welcome_enabled("123456789") is True
     row = await groups.get_group("123456789")
     assert row is not None and row.name == "测试群"

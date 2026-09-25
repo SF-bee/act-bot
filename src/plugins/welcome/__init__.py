@@ -2,7 +2,7 @@
 
 - 订阅 `GroupMemberJoin`（feature=welcome，cooldown=60 防协议端重复推送）
 - 两级开关：全局 `[features].welcome`（config.toml）＋ 群级 groups.features["welcome"]
-- 管理员命令：`/welcome`（状态 + 预览）、`/welcome on|off`
+- 管理员命令：`/welcome`（**只读**：本群状态 + 欢迎语预览）；开关类操作统一走 `/config welcome on|off`
 
 群级门控与 cooldown 由事件中枢统一处理，本文件不再直接挂 OneBot 事件；
 渲染逻辑在 src/core/welcome.py。
@@ -15,7 +15,7 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
 
-from src.core import audit, features, groups, persona
+from src.core import features, groups, persona
 from src.core import permissions as perms
 from src.core.config import get_settings
 from src.core.events import GroupMemberJoin, subscribe
@@ -27,7 +27,7 @@ logger = logging.getLogger("actbot.welcome")
 __plugin_meta__ = PluginMetadata(
     name="welcome",
     description="入群欢迎（管理员可开关）",
-    usage="/welcome — 查看本群入群欢迎开关与欢迎语预览\n/welcome on|off — 开启 / 关闭本群入群欢迎",
+    usage="/welcome — 查看本群入群欢迎开关与欢迎语预览（只读）",
     extra={"role": "admin", "order": 110},
 )
 
@@ -75,21 +75,11 @@ async def _handle_welcome_cmd(bot: Bot, event: MessageEvent) -> None:
     group_id = str(event.group_id)
     settings = get_settings()
 
-    if action in ("on", "off"):
-        enabled = action == "on"
-        group_name = await safe_group_name(bot, group_id)
-        await groups.set_feature(
-            group_id, features.FEATURE_WELCOME, enabled, group_name=group_name
+    if action:
+        # 开关类操作统一走 /config：同一份群级状态只保留一个写入口
+        await welcome_cmd.finish(
+            "开关请用 /config welcome on|off；/welcome 只查看本群状态与欢迎语预览。"
         )
-        await audit.record(
-            "welcome.on" if enabled else "welcome.off",
-            actor_qq=str(event.user_id),
-            group_id=group_id,
-            detail=group_name,
-        )
-        await welcome_cmd.finish("好，本群入群欢迎已开启。" if enabled else "好，本群入群欢迎已关闭。")
-    if action == "unknown":
-        await welcome_cmd.finish("用法：/welcome 查看状态；/welcome on 开启；/welcome off 关闭。")
 
     enabled = await groups.feature_enabled(group_id, features.FEATURE_WELCOME)
     global_on = settings.feature(features.FEATURE_WELCOME)
