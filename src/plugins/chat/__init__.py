@@ -34,7 +34,7 @@ __plugin_meta__ = PluginMetadata(
     name="chat",
     description="聊天引擎（@ 或关键词唤醒；确定性机制，不接 LLM）",
     usage=(
-        "/chat — 查看聊天互动状态与规则统计\n"
+        "/chat — 查看聊天互动状态与规则统计（开关：/config chat on|off）\n"
         "/chat list [kind] — 列出规则（含 id）\n"
         "/chat add [-g] <kind> <触发词> <回复> — 新增规则（-g 为全局默认）\n"
         "/chat del <id> — 删除规则"

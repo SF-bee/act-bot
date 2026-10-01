@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .features import all_features
 from .paths import config_file, env_file
 
 try:  # Python >= 3.11 自带 tomllib
@@ -23,15 +24,9 @@ class ConfigError(RuntimeError):
     """配置错误：消息面向使用者，应包含修复建议。"""
 
 
-_DEFAULT_FEATURES: dict[str, bool] = {
-    "welcome": True,
-    "departments": True,
-    "events": True,
-    "signups": True,
-    "broadcast": True,
-    "archive": True,
-    "group_admin": True,
-}
+# 功能开关的**唯一名册**在 src/core/features.py（`/config`、事件中枢门控、/help 都用它）。
+# 这里只做派生，别再手写第二份——曾经的两份名册导致 /version 显示 7 个开关、/config 只列 3 个。
+_DEFAULT_FEATURES: dict[str, bool] = {item.name: item.default for item in all_features()}
 
 _DEFAULT_PERSONA_NAME = "Yulia"
 _DEFAULT_PERSONA_TITLE = "ACT 动漫社助理"

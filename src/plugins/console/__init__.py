@@ -25,7 +25,12 @@ logger = logging.getLogger("actbot.console")
 __plugin_meta__ = PluginMetadata(
     name="console",
     description="管理控制台：群功能开关与审计记录（仅管理员）",
-    usage="/config — 查看本群各功能开关\n/config <功能> on|off — 开关本群功能\n/audit [n] — 查看最近 N 条管理操作",
+    # 功能名从注册表自动列出，避免以后加了功能忘记改帮助
+    usage=(
+        "/config — 查看本群各功能开关\n"
+        "/config <功能> on|off — 开关本群功能（可选：{0}）\n"
+        "/audit [n] — 查看最近 N 条管理操作"
+    ).format("、".join(features.names())),
     extra={"role": "admin", "order": 120},
 )
 
