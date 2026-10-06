@@ -23,6 +23,10 @@ services:
       # 快速登录（免扫码）：镜像 entrypoint 见 ACCOUNT 会执行 `qq -q $ACCOUNT`。
       # QQ 号只从 .env 注入（NAPCAT_QQ=...），绝不写入仓库；留空则退化为扫码登录。
       ACCOUNT: "${NAPCAT_QQ:-}"
+      # 回退密码：快速登录的登录态被腾讯回收时，NapCat 用密码自动重登（免人工扫码）。
+      # 凭据只从 deploy/docker/.env 注入，绝不写入仓库；留空则退化为二维码登录。
+      NAPCAT_QUICK_PASSWORD: "${NAPCAT_QUICK_PASSWORD:-}"
+      NAPCAT_QUICK_PASSWORD_MD5: "${NAPCAT_QUICK_PASSWORD_MD5:-}"
     volumes:
       # NapCat 配置 / 插件 / QQ 登录态必须持久化，否则每次重建都要重新扫码
       - ./runtime/napcat/config:/app/napcat/config

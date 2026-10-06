@@ -29,6 +29,8 @@ NAPCAT_UID=$(id -u) NAPCAT_GID=$(id -g) docker compose -f deploy/docker/docker-c
 ## 3. 协议端登录与连线
 
 0. **免扫码（推荐）**：在 `deploy/docker/.env` 里设 `NAPCAT_QQ=<机器人QQ号>`——compose 会作为 `ACCOUNT` 传给容器，镜像 entrypoint 执行 `qq -q $ACCOUNT` 走快速登录（实测重建容器后直接 `正在快速登录`，无需扫码）。留空则走下面的扫码流程。
+
+   再设 `NAPCAT_QUICK_PASSWORD=<QQ密码>` 作为**回退**：当快速登录的登录态被腾讯回收（日志出现 `notice.bot_offline` / “你的账号当前登录已失效”）时，NapCat 会自动用密码重登，不必人工扫码。也可用 `NAPCAT_QUICK_PASSWORD_MD5` 填 32 位 MD5。两个变量都只放 `deploy/docker/.env`（不入库）。
 1. 取 WebUI 登录 token：`docker compose -f deploy/docker/docker-compose.yml logs act-napcat | head -50`
 2. 隧道访问 WebUI（**不要**把 6099 暴露公网）：
    ```bash
