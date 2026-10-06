@@ -43,7 +43,17 @@ def backups_dir() -> Path:
 
 
 def config_file() -> Path:
-    """业务配置文件位置（可能不存在）。"""
+    """业务配置文件位置（可能不存在）。
+
+    可用 ``ACTBOT_CONFIG_FILE`` 覆盖（相对路径以仓库根为基准），便于测试或
+    多环境部署时指向不同配置；未设置时用 ``config/config.toml``。
+    """
+    raw = os.environ.get("ACTBOT_CONFIG_FILE", "").strip()
+    if raw:
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+        return path
     return PROJECT_ROOT / "config" / "config.toml"
 
 

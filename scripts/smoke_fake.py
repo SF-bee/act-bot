@@ -89,6 +89,7 @@ async def run_smoke(timeout: float, log_level: str = "INFO") -> int:
             "DRIVER": "~fastapi+~httpx+~websockets",
             "LOG_LEVEL": log_level,
             "ACTBOT_DATA_DIR": tmpdir,
+            "ACTBOT_CONFIG_FILE": str(Path(tmpdir) / "config.toml"),
             "ONEBOT_ACCESS_TOKEN": SMOKE_TOKEN,
             "COMMAND_START": '["/"]',
         }
