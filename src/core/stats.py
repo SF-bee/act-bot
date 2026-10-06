@@ -295,7 +295,7 @@ def format_stats(
     history: dict[str, int] | None = None,
     history_days: int = 7,
 ) -> str:
-    """渲染 /stats 文本（纯函数，便于测试）。"""
+    """渲染 /统计 文本（纯函数，便于测试）。"""
     lines = ["{0}（{1}）· 本群统计（今天）".format(bot_name, bot_title)]
     lines.append(
         "· 消息 {0} 条｜活跃 {1} 人".format(

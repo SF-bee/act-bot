@@ -21,11 +21,11 @@ from src.core.help import ADMIN_ROLE, HelpEntry, build_entry, render_help
 __plugin_meta__ = PluginMetadata(
     name="help",
     description="命令帮助菜单（普通成员与管理员看到的内容不同）",
-    usage="/help — 查看可用命令",
+    usage="/帮助 — 查看可用命令（别名 /help）",
     extra={"role": "member", "order": 10},
 )
 
-help_cmd = on_command("help", priority=10, block=True)
+help_cmd = on_command("帮助", aliases={"help"}, priority=10, block=True)
 
 
 def collect_entries() -> list[HelpEntry]:

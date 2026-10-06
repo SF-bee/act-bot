@@ -15,7 +15,7 @@ from src.core import events, stats
 __plugin_meta__ = PluginMetadata(
     name="events",
     description="事件中枢（规范化 + 群级门控 + 分发）",
-    usage="",  # 无用户命令：不进帮助菜单（/help 跳过 usage 为空的插件）
+    usage="",  # 无用户命令：不进帮助菜单（/帮助 跳过 usage 为空的插件）
     extra={"role": "member", "order": 5},
 )
 

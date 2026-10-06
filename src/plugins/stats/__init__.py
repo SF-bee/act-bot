@@ -1,7 +1,7 @@
 """stats：活跃统计（内存累加 + 定时落库）。
 
 - 订阅 `MessageReceived` / `GroupMemberJoin` / `GroupMemberLeave`（feature=stats）；
-- `/stats`：成员看本群今天的活跃概览；管理员额外看到命令数、自动回复数、错误数与今日活跃 Top N；
+- `/统计`：成员看本群今天的活跃概览；管理员额外看到命令数、自动回复数、错误数与今日活跃 Top N；
 - 开关走 `/config stats on|off`（遵守命令分层约定：本插件不提供开关命令）；
 - 自动回复数由 welcome / chat 在发送成功后调用 `stats.record_auto_reply` 记入；
 - 错误数由事件入口在中枢报告失败时记入。
@@ -27,11 +27,11 @@ logger = logging.getLogger("actbot.stats")
 __plugin_meta__ = PluginMetadata(
     name="stats",
     description="活跃统计（消息 / 活跃人数 / 命令 / 自动回复 / 入群退群 / 在线时长 / 错误）",
-    usage="/stats — 查看本群活跃统计（管理员可见更详细数据）",
+    usage="/统计 — 查看本群活跃统计（管理员可见更详细数据，别名 /stats）",
     extra={"role": "member", "order": 40},
 )
 
-stats_cmd = on_command("stats", priority=10, block=True)
+stats_cmd = on_command("统计", aliases={"stats"}, priority=10, block=True)
 
 
 @subscribe(MessageReceived, feature="stats", name="stats-message")

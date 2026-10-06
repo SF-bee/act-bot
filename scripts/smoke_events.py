@@ -11,7 +11,7 @@
     7. 管理员发 /welcome on → 期望被引导到 /config（/welcome 只读，开关不重复实现）；
     8. Chat Engine：/config chat on 后 @ 机器人 → 期望收到聊天回应；
     9. /config chat off 后 @ 机器人 → 期望被群级门控拦下；
-   10. /stats：管理员能看到命令/自动回复统计，普通成员看不到（角色分流）。
+   10. /统计（规范名）与 /stats（别名）：管理员能看到命令/自动回复统计，普通成员看不到（角色分流）。
 
 用法：
     uv run python scripts/smoke_events.py [--timeout 90] [--log-level DEBUG]
@@ -210,6 +210,7 @@ async def run_smoke(timeout: float, log_level: str = "INFO") -> int:
             "DRIVER": "~fastapi+~httpx+~websockets",
             "LOG_LEVEL": log_level,
             "ACTBOT_DATA_DIR": tmpdir,
+            "ACTBOT_CONFIG_FILE": str(Path(tmpdir) / "config.toml"),
             "ONEBOT_ACCESS_TOKEN": SMOKE_TOKEN,
             "COMMAND_START": '["/"]',
         }
@@ -317,14 +318,14 @@ async def run_smoke(timeout: float, log_level: str = "INFO") -> int:
             gated_chat = await drain(connection, quiet=0.8, max_wait=3.0)
             check("chat 关闭后 @ 不再回应", not gated_chat, "收到 {0} 条发送".format(len(gated_chat)))
 
-            # 9. /stats：管理员与普通成员看到的内容不同
+            # 9. /统计（中文规范名）与 /stats（英文别名）：管理员与普通成员看到的内容不同
             await connection.send(json.dumps(build_group_message("大家好啊"), ensure_ascii=False))
             await drain(connection, quiet=0.6, max_wait=2.0)
-            await connection.send(json.dumps(build_group_message("/stats"), ensure_ascii=False))
+            await connection.send(json.dumps(build_group_message("/统计"), ensure_ascii=False))
             admin_stats = await drain(connection, quiet=0.8, max_wait=5.0)
             admin_text = extract_text(admin_stats[-1]["params"].get("message")) if admin_stats else ""
             check(
-                "管理员 /stats 可见命令与自动回复统计",
+                "管理员 /统计（规范名）可见命令与自动回复统计",
                 "本群统计" in admin_text and "命令" in admin_text and "自动回复" in admin_text,
                 admin_text[:70].replace("\n", " | "),
             )
@@ -335,7 +336,7 @@ async def run_smoke(timeout: float, log_level: str = "INFO") -> int:
             member_stats = await drain(connection, quiet=0.8, max_wait=5.0)
             member_text = extract_text(member_stats[-1]["params"].get("message")) if member_stats else ""
             check(
-                "普通成员 /stats 不显示管理数据",
+                "普通成员 /stats（别名）不显示管理数据",
                 "本群统计" in member_text and "命令" not in member_text,
                 member_text[:70].replace("\n", " | "),
             )

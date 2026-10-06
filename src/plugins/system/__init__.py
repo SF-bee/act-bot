@@ -11,7 +11,7 @@ from src.core.config import get_settings
 __plugin_meta__ = PluginMetadata(
     name="system",
     description="基础系统命令（连通性检查）",
-    usage="/ping — 检查机器人连通性\n/version — 查看版本与运行信息",
+    usage="/ping — 检查机器人连通性\n/版本 — 查看版本与运行信息（别名 /version）",
     extra={"role": "member", "order": 20},
 )
 
@@ -23,7 +23,7 @@ async def _handle_ping() -> None:
     await ping.finish("pong")
 
 
-version = on_command("version", priority=10, block=True)
+version = on_command("版本", aliases={"version"}, priority=10, block=True)
 
 
 @version.handle()
