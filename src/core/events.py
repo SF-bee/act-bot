@@ -44,6 +44,8 @@ class MessageReceived(DomainEvent):
     text: str = ""
     is_group: bool = True
     at_self: bool = False  # 消息里是否 @ 了机器人（聊天引擎的唤醒方式之一）
+    at_all: bool = False  # 消息里是否 @ 了全体成员（风控用）
+    sender_role: str = ""  # 群主 owner / 管理员 admin / 成员 member（风控豁免用）
     raw: Any = None
 
 
@@ -130,6 +132,27 @@ def _mentions_self(event: Any) -> bool:
     return False
 
 
+def _mentions_all(event: Any) -> bool:
+    """消息里是否 @ 了全体成员。
+
+    与 _mentions_self 对称：raw_message 与消息段两个来源都看。
+    """
+    raw = str(getattr(event, "raw_message", "") or "")
+    if "[CQ:at,qq=all]" in raw or '[CQ:at,qq="all"]' in raw:
+        return True
+    try:
+        segments = list(getattr(event, "message", None))
+    except TypeError:
+        return False
+    for segment in segments:
+        if getattr(segment, "type", "") != "at":
+            continue
+        data = getattr(segment, "data", {}) or {}
+        if str(data.get("qq", "")).lower() == "all":
+            return True
+    return False
+
+
 def normalize(event: Any) -> DomainEvent | None:
     """OneBot 事件 → 领域事件；不关心的事件返回 None（纯函数，便于测试）。"""
     from nonebot.adapters.onebot.v11 import (
@@ -149,6 +172,8 @@ def normalize(event: Any) -> DomainEvent | None:
             text=event.message.extract_plain_text(),
             is_group=True,
             at_self=_mentions_self(event),
+            at_all=_mentions_all(event),
+            sender_role=str(getattr(getattr(event, "sender", None), "role", "") or ""),
             raw=event,
         )
     if isinstance(event, GroupIncreaseNoticeEvent):

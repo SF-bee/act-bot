@@ -49,10 +49,11 @@ def main() -> None:
     @driver.on_startup
     async def _on_startup() -> None:
         """启动钩子：初始化数据库（含迁移）与调度器。"""
-        from src.core import db, scheduler
+        from src.core import db, scheduler, scope
 
         db_file = await db.init_db()
         logger.info("数据库就绪：%s", db_file)
+        await scope.load_all()
         scheduler.setup_and_start()
 
     @driver.on_shutdown

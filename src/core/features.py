@@ -13,6 +13,7 @@ from dataclasses import dataclass
 FEATURE_WELCOME = "welcome"
 FEATURE_CHAT = "chat"
 FEATURE_STATS = "stats"
+FEATURE_MODERATION = "moderation"
 
 
 @dataclass(frozen=True)
@@ -31,8 +32,9 @@ class Feature:
 
 _REGISTRY: tuple[Feature, ...] = (
     Feature(FEATURE_WELCOME, "入群欢迎", True, "有人入群时 @ 新人并发送欢迎语"),
-    Feature(FEATURE_CHAT, "聊天互动", False, "关键词/规则触发的轻量互动（尚未实现）"),
-    Feature(FEATURE_STATS, "统计", True, "消息量/活跃度计数（尚未实现）"),
+    Feature(FEATURE_CHAT, "聊天互动", False, "关键词/规则触发的轻量互动（@ 必回，关键词按概率回）"),
+    Feature(FEATURE_STATS, "统计", True, "消息量/活跃度/入群退群/在线时长计数"),
+    Feature(FEATURE_MODERATION, "群管理 · 风控", True, "敏感信息撤回警告、刷屏禁言、群管理命令"),
 )
 _BY_NAME = {item.name: item for item in _REGISTRY}
 

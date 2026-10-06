@@ -160,3 +160,34 @@ class StatsDaily(Base):
     date: Mapped[str] = mapped_column(String, primary_key=True, default="")
     metric: Mapped[str] = mapped_column(String, primary_key=True, default="")
     value: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AdminBinding(Base):
+    """私聊管理群的默认群绑定（迁移 006）：qq -> group_id，重启后保留。"""
+
+    __tablename__ = "admin_bindings"
+
+    qq: Mapped[str] = mapped_column(String, primary_key=True)
+    group_id: Mapped[str] = mapped_column(String, default="")
+    updated_at: Mapped[str] = mapped_column(String, default="")
+
+
+class ModerationRule(Base):
+    """群风控规则（迁移 005）：敏感词/正则 → 撤回/警告/禁言/踢出。
+
+    group_id 为空串表示全局规则；全局与群级叠加生效。
+    """
+
+    __tablename__ = "moderation_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[str] = mapped_column(String, default="")
+    kind: Mapped[str] = mapped_column(String, default="keyword")
+    pattern: Mapped[str] = mapped_column(String, default="")
+    action: Mapped[str] = mapped_column(String, default="warn")
+    recall: Mapped[int] = mapped_column(Integer, default=1)
+    mute_seconds: Mapped[int] = mapped_column(Integer, default=600)
+    enabled: Mapped[int] = mapped_column(Integer, default=1)
+    note: Mapped[str] = mapped_column(String, default="")
+    created_by: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[str] = mapped_column(String, default="")

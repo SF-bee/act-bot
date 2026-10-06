@@ -7,10 +7,11 @@
 
 [features]
 # 全局功能开关（关掉后该功能在所有群都不响应）。
-# 名册以 src/core/features.py 为准，当前可用：welcome / chat / stats
+# 名册以 src/core/features.py 为准，当前可用：welcome / chat / stats / moderation
 welcome = true        # 入群欢迎
 chat = false          # 聊天互动（默认关，需显式打开）
 stats = true          # 活跃统计
+# moderation = true   # 群管理 · 风控（默认开；如需全局关闭改为 false）
 
 [persona]
 # 机器人对外人设（项目技术名仍是 act-bot，见 README「人设」）
@@ -42,7 +43,7 @@ escalate_window_seconds = 120
 # 统计（内存累加 → 定时落库；单条消息绝不写库）
 # 落库间隔（秒）
 flush_seconds = 60
-# /stats 里给管理员看的活跃 Top N（仅内存，不落库）
+# /统计 里给管理员看的活跃 Top N（仅内存，不落库）
 top_users = 5
 # 历史回看天数
 history_days = 7
@@ -58,3 +59,47 @@ daily_at = "03:00"
 keep_daily_days = 30
 # 另外保留最近 N 个月的月度副本
 keep_monthly = 6
+
+[moderation]
+# 群风控（敏感信息撤回警告 / 刷屏禁言 / @全体 / 复读）
+# 群级开关用 /config moderation on|off；规则用 /mod add 维护（不预置敏感词）
+# 刷屏：窗口内消息数超过阈值即判刷屏
+flood_window_seconds = 8
+flood_max_messages = 8
+flood_action = "mute"        # warn | recall_only | mute | kick
+flood_mute_seconds = 600
+# 复读：窗口内相同文本/图片重复出现的次数
+duplicate_window_seconds = 30
+duplicate_max = 3
+duplicate_action = "warn"
+# @全体成员的处置
+mention_all_action = "warn"
+# 警告累计到 N 次自动升级为禁言；计数有效期
+warn_before_mute = 3
+strike_window_seconds = 600
+# 同一人两次处置的最小间隔（秒），防止连续处置刷屏
+action_cooldown_seconds = 30
+# 手动/升级禁言的默认时长与上限（秒，上限 30 天）
+default_mute_seconds = 600
+max_mute_seconds = 2592000
+# 群主/群管理员豁免
+exempt_group_admins = true
+# true = 只审计不执行（灰度上线用）
+dry_run = false
+# 警告文案；占位符：{nickname} {user_id} {reason} {count} {limit} {bot_name} {bot_title}
+warn_text = "{nickname}，请注意群规：{reason}（累计 {count} 次，达到 {limit} 次将禁言）"
+# 内置敏感词库（houbb/sensitive-word-data，已排除政治类；见 src/core/wordlists/）
+sensitive_dict = true
+# 内置词库命中的处置：warn（撤回+警告）| recall_only | mute | kick
+sensitive_action = "warn"
+# 是否跳过空白/标点等干扰字符（更严，但误伤略高）
+sensitive_skip = false
+# 最短命中词长（过滤单字，降低误伤）
+sensitive_min_length = 2
+# 繁体文本先转简体再匹配（識別「刷單」这类）
+sensitive_traditional = true
+# 拼音变体匹配（shuadan）；误伤与内存开销略高，默认关
+sensitive_pinyin = false
+# 内置正则：URL / 域名 / 手机号 / QQ 号
+sensitive_patterns = true
+sensitive_pattern_action = "warn"

@@ -34,3 +34,9 @@ jobs:
 
       - name: Fake OneBot smoke
         run: uv run python scripts/smoke_fake.py
+
+      - name: Event hub smoke
+        run: uv run python scripts/smoke_events.py
+
+      - name: Moderation smoke
+        run: uv run python scripts/smoke_moderation.py

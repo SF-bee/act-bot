@@ -15,7 +15,7 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.plugin import PluginMetadata
 
-from src.core import audit, features, groups
+from src.core import audit, features, groups, scope
 from src.core import permissions as perms
 from src.core.config import get_settings
 from src.core.onebot import safe_group_name
@@ -27,15 +27,22 @@ __plugin_meta__ = PluginMetadata(
     description="管理控制台：群功能开关与审计记录（仅管理员）",
     # 功能名从注册表自动列出，避免以后加了功能忘记改帮助
     usage=(
-        "/config — 查看本群各功能开关\n"
-        "/config <功能> on|off — 开关本群功能（可选：{0}）\n"
-        "/audit [n] — 查看最近 N 条管理操作"
+        "/config [-g 群号] — 查看本群各功能开关\n"
+        "/config [-g 群号] <功能> on|off — 开关本群功能（可选：{0}）\n"
+        "/audit [n] — 查看最近 N 条管理操作\n"
+        "/use <群号> — 私聊管理时绑定默认群（/use 查看，/use off 解除）"
     ).format("、".join(features.names())),
     extra={"role": "admin", "order": 120},
 )
 
 config_cmd = on_command("config", priority=10, block=True)
 audit_cmd = on_command("audit", priority=10, block=True)
+use_cmd = on_command("use", priority=10, block=True)
+
+
+def _command_body(event: MessageEvent) -> list[str]:
+    parts = event.message.extract_plain_text().split()
+    return parts[1:] if parts else []
 
 
 def _switch_text(enabled: bool) -> str:
@@ -63,11 +70,19 @@ async def _feature_lines(group_id: str, selected: features.Feature | None) -> li
 async def _handle_config(bot: Bot, event: MessageEvent) -> None:
     if not await perms.is_admin(str(event.user_id)):
         await config_cmd.finish()  # 非管理员：静默
-    if not isinstance(event, GroupMessageEvent):
-        await config_cmd.finish("群配置命令要在群里用。")
 
-    name, action = groups.parse_feature_command(event.message.extract_plain_text())
-    group_id = str(event.group_id)
+    is_group = isinstance(event, GroupMessageEvent)
+    resolved = scope.extract_scope(
+        _command_body(event),
+        is_group=is_group,
+        event_group_id=str(event.group_id) if is_group else "",
+        actor_qq=str(event.user_id),
+    )
+    if resolved.error:
+        await config_cmd.finish(resolved.error)
+    group_id = resolved.group_id
+
+    name, action = groups.parse_feature_command("/config " + " ".join(resolved.tokens))
 
     if action == "unknown":
         await config_cmd.finish("用法：/config <功能> on|off（功能名见 /config）")
@@ -118,4 +133,29 @@ async def _handle_audit(event: MessageEvent) -> None:
     lines = ["最近 {0} 条管理操作：".format(len(rows))]
     lines.extend("· " + audit.format_record(row, tz_name=tz_name) for row in rows)
     await audit_cmd.finish("\n".join(lines))
+
+
+@use_cmd.handle()
+async def _handle_use(bot: Bot, event: MessageEvent) -> None:
+    """私聊管理：绑定/查看/解除默认群。"""
+    if not await perms.is_admin(str(event.user_id)):
+        await use_cmd.finish()
+    actor = str(event.user_id)
+    tokens = _command_body(event)
+    if not tokens:
+        bound = scope.bound_group(actor)
+        await use_cmd.finish(
+            "当前绑定：{0}\n用法：/use <群号>｜/use off（解除）".format(bound or "（未绑定）")
+        )
+    if tokens[0].strip().lower() in ("off", "clear", "unbind"):
+        await scope.remove(actor)
+        await use_cmd.finish("已解除绑定。")
+    group_id = scope.normalize_group(tokens[0])
+    if not group_id:
+        await use_cmd.finish("群号不合法（应为至少 5 位数字）。")
+    group_name = await safe_group_name(bot, group_id)
+    if not group_name:
+        await use_cmd.finish("绑定失败：拿不到该群信息，机器人可能不在群里。")
+    await scope.save(actor, group_id)
+    await use_cmd.finish("已绑定群 {0}（{1}）。之后管理命令可省略 -g。".format(group_id, group_name))
 

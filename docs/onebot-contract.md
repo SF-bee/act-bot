@@ -36,6 +36,7 @@
 | `send_group_msg` | 群回复（直调时使用；协议端通常同样支持） | `group_id, message` | `{message_id}` |
 | `send_private_msg` | （可选）私聊回复 | `user_id, message` | `{message_id}` |
 | `get_login_info` | 启动自检 / 契约冒烟 | — | `{user_id, nickname}` |
+| `get_group_info` | 群名（欢迎语 / 广播 / `/use` 绑定校验） | `group_id` | `{group_id, group_name, member_count}` |
 | `get_group_member_info` | 入群欢迎 / 群管 | `group_id, user_id, no_cache` | `{user_id, nickname, card, role}` |
 | `set_group_ban` | 基础群管理（禁言） | `group_id, user_id, duration` | — |
 | `set_group_kick` | 基础群管理（移出） | `group_id, user_id, reject_add_request` | — |

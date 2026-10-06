@@ -5,7 +5,7 @@
 > **原则：账号是可替换的，项目和数据才是 ACT 的资产。**
 >
 > **人设**：项目技术名是 `act-bot`（仓库 / 服务 / 日志），群里的对外身份是 **Yulia｜ACT 动漫社助理**。
-> 名字、身份、别名都在 `config/config.toml` 的 `[persona]` 配置；`/help`、`/version`、入群欢迎语都自动使用它。
+> 名字、身份、别名都在 `config/config.toml` 的 `[persona]` 配置；`/帮助`、`/版本`、入群欢迎语都自动使用它。
 
 ## 支持平台（业务层 / 协议端分开）
 
@@ -36,20 +36,21 @@ uv run python scripts/smoke_fake.py
 
 | 功能 | 触发 | 说明 |
 | --- | --- | --- |
-| 帮助菜单 | `/help` | 命令清单由各插件的 `PluginMetadata` 自动汇总；**普通成员与管理员看到的内容不同**（管理员多一段「管理员命令」） |
+| 帮助菜单 | `/帮助`（别名 `/help`） | 命令清单由各插件的 `PluginMetadata` 自动汇总；**普通成员与管理员看到的内容不同**（管理员多一段「管理员命令」） |
 | 入群欢迎 | 有人入群（`notice.group_increase`） | 自动 @ 新人 + 欢迎语；两级开关：全局 `[features].welcome`（config.toml）、群级「群内 `/config welcome on|off`」（`/welcome` 只读，看状态与预览）；文案在 `[welcome].text`，支持占位符 `{nickname}` / `{group_name}` / `{user_id}`；同一人 60 秒内重复事件只欢迎一次 |
 | 聊天互动 | `@` 机器人，或消息里含关键词 | **确定性机制，不接 AI**：被 @ 必回且随连续被叫分档（mention → mention_more → mention_tired）；关键词按 `[chat].reply_probability` 概率回；同人同群 `[chat].cooldown_seconds` 内不打扰；规则存 `chat_rules` 表，用 `/chat add` / `/chat list` / `/chat del` 维护（群级规则覆盖全局，`-g` 写全局默认）；开关走 `/config chat on|off` |
-| 活跃统计 | `/stats` | 消息数 / 活跃人数 / 入群退群 / 在线时长，**成员与管理员看到的内容不同**（管理员多看命令数、自动回复数、错误数、今日活跃 Top N、近 N 天汇总）；内存累加 + 定时落库（`[stats].flush_seconds`），**不存消息正文、不落库每人发言数**；开关走 `/config stats on|off` |
-| 权限查看 | `/op` | 查看自己的角色与管理员名单 |
+| 群管理 · 风控 | 违规消息 / `/mod` 等命令 | 内置 6.2 万词库（已排除政治类）+ 自定义规则，命中自动**撤回+警告**、刷屏禁言、复读/@全体可配；`/mod` 管理规则、`/warn` `/mute` `/unmute` `/kick` `/recall` 手动处置；**支持私聊管理**（`/use` 绑定默认群或 `-g` 单次指定，`-s` 静默只审计）；开关走 `/config moderation on|off` |
+| 活跃统计 | `/统计`（别名 `/stats`） | 消息数 / 活跃人数 / 入群退群 / 在线时长，**成员与管理员看到的内容不同**（管理员多看命令数、自动回复数、错误数、今日活跃 Top N、近 N 天汇总）；内存累加 + 定时落库（`[stats].flush_seconds`），**不存消息正文、不落库每人发言数**；开关走 `/config stats on|off` |
+| 权限查看 | `/权限`（别名 `/op`） | 查看自己的角色与管理员名单 |
 | 群功能开关 | `/config`、`/config <功能> on|off` | 管理员可按群开关功能（写 `groups.features`）；功能名册见 `src/core/features.py`，新增功能不用改命令 |
 | 管理操作审计 | `/audit [n]` | 谁在哪个群做了什么（改配置等），管理员可查；写入见 `src/core/audit.py` |
 | 事件中枢 | —（无命令） | 事件先经 `src/core/events.py` 规范化，再按群级功能开关分发；新功能用 `subscribe(...)` 注册，**不要**直接挂 OneBot 事件 |
 | 连通性检查 | `/ping` | 回复 `pong` |
-| 版本信息 | `/version` | 版本号 + 已开启的功能开关数 |
+| 版本信息 | `/版本`（别名 `/version`） | 版本号 + 已开启的功能开关数 |
 
-命令一律用英文（方便手机输入）；管理类命令仅管理员可用，非管理员静默。
+**命令命名约定**：管理/工具型命令用**英文**且只对管理员可见（非管理员静默拒绝）；面向普通成员的功能命令用**中文**，并保留英文别名平滑过渡。命令前缀永远带 `/`。完整清单与理由见 `docs/commands.md`。
 
-**新增插件时的约定**：在 `PluginMetadata` 里填好 `usage`（一行一个命令，形如 `/cmd — 说明`）与 `extra`（`role`: `member`/`admin`、`order`: 排序权重），`/help` 会自动收录，不需要改帮助插件。
+**新增插件时的约定**：在 `PluginMetadata` 里填好 `usage`（一行一个命令，形如 `/cmd — 说明`）与 `extra`（`role`: `member`/`admin`、`order`: 排序权重），`/帮助` 会自动收录，不需要改帮助插件。
 
 **命令分层约定**（避免两个入口改同一份状态）：**开关类操作一律走 `/config <功能> on|off`**；业务命令只负责该功能专有的展示与内容（例如 `/welcome` 只读状态与预览）。新增功能请照此分层，审计动作名统一为 `config.set`。
 
@@ -143,6 +144,8 @@ act-bot/
 ## 文档
 
 - 设计基线：`docs/design.md`
+- 命令约定与清单：`docs/commands.md`
+- 群管理 · 风控：`docs/moderation.md`
 - OneBot 接口契约：`docs/onebot-contract.md`
 - 平台差异备忘（必读）：`docs/platform-notes.md`
 - 部署：`docs/deploy.md`（总览）｜ `docs/deploy-ubuntu.md` ｜ `docs/deploy-windows.md` ｜ `docs/deploy-macos-dev.md`

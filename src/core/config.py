@@ -24,8 +24,8 @@ class ConfigError(RuntimeError):
     """配置错误：消息面向使用者，应包含修复建议。"""
 
 
-# 功能开关的**唯一名册**在 src/core/features.py（`/config`、事件中枢门控、/help 都用它）。
-# 这里只做派生，别再手写第二份——曾经的两份名册导致 /version 显示 7 个开关、/config 只列 3 个。
+# 功能开关的**唯一名册**在 src/core/features.py（`/config`、事件中枢门控、/帮助 都用它）。
+# 这里只做派生，别再手写第二份——曾经的两份名册导致 /版本 显示 7 个开关、/config 只列 3 个。
 _DEFAULT_FEATURES: dict[str, bool] = {item.name: item.default for item in all_features()}
 
 _DEFAULT_PERSONA_NAME = "Yulia"
@@ -35,6 +35,11 @@ _DEFAULT_PERSONA_ALIASES = ("尤莉娅", "尤莉", "小尤")
 _DEFAULT_WELCOME_TEXT = (
     "欢迎 {nickname} 加入 ACT 动漫社！我是社团助理 {bot_name}，先看看群公告，有问题随时在群里问～"
 )
+
+_DEFAULT_MODERATION_WARN_TEXT = (
+    "{nickname}，请注意群规：{reason}（累计 {count} 次，达到 {limit} 次将禁言）"
+)
+_DEFAULT_MODERATION_ACTIONS = ("warn", "recall_only", "mute", "kick")
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,32 @@ class AppSettings:
     backup_daily_at: str = "03:00"
     backup_keep_daily_days: int = 30
     backup_keep_monthly: int = 6
+    # 群风控（[moderation]）
+    moderation_flood_window_seconds: float = 8.0
+    moderation_flood_max_messages: int = 8
+    moderation_flood_action: str = "mute"
+    moderation_flood_mute_seconds: int = 600
+    moderation_duplicate_window_seconds: float = 30.0
+    moderation_duplicate_max: int = 3
+    moderation_duplicate_action: str = "warn"
+    moderation_mention_all_action: str = "warn"
+    moderation_warn_before_mute: int = 3
+    moderation_strike_window_seconds: float = 600.0
+    moderation_action_cooldown_seconds: float = 30.0
+    moderation_default_mute_seconds: int = 600
+    moderation_max_mute_seconds: int = 2592000
+    moderation_exempt_group_admins: bool = True
+    moderation_dry_run: bool = False
+    moderation_warn_text: str = _DEFAULT_MODERATION_WARN_TEXT
+    # 内置敏感词库（houbb/sensitive-word-data，见 src/core/wordlists/）
+    moderation_sensitive_dict: bool = True
+    moderation_sensitive_action: str = "warn"
+    moderation_sensitive_skip: bool = False
+    moderation_sensitive_min_length: int = 2
+    moderation_sensitive_traditional: bool = True
+    moderation_sensitive_pinyin: bool = False
+    moderation_sensitive_patterns: bool = True
+    moderation_sensitive_pattern_action: str = "warn"
 
     def feature(self, name: str) -> bool:
         """功能开关查询；未定义的开关默认开启。"""
@@ -98,6 +129,27 @@ def parse_hhmm(value: str) -> tuple[int, int]:
     if not (0 <= hour <= 23 and 0 <= minute <= 59):
         raise ConfigError(f"时间超出范围（当前为 {value!r}）")
     return hour, minute
+
+
+def _mod_action(value: Any, key: str) -> str:
+    """校验风控动作名。"""
+    text = str(value).strip().lower()
+    if text not in _DEFAULT_MODERATION_ACTIONS:
+        raise ConfigError(
+            "[moderation].{0} 只能是 {1}".format(key, "/".join(_DEFAULT_MODERATION_ACTIONS))
+        )
+    return text
+
+
+def _mod_number(value: Any, key: str, *, integer: bool = False, minimum: float = 0.0):
+    """校验风控阈值：数字 / 整数 / 下限。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError("[moderation].{0} 应为数字".format(key))
+    if integer and not isinstance(value, int):
+        raise ConfigError("[moderation].{0} 应为整数".format(key))
+    if float(value) < minimum:
+        raise ConfigError("[moderation].{0} 应 >= {1:g}".format(key, minimum))
+    return int(value) if integer else float(value)
 
 
 def load_settings(
@@ -202,6 +254,54 @@ def load_settings(
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ConfigError(f"[backup].{label} 应为非负整数")
 
+    moderation = raw.get("moderation", {})
+    if not isinstance(moderation, dict):
+        raise ConfigError("[moderation] 段落格式错误：应为键值对")
+    mod_flood_window = _mod_number(moderation.get("flood_window_seconds", 8), "flood_window_seconds", minimum=0.1)
+    mod_flood_max = _mod_number(moderation.get("flood_max_messages", 8), "flood_max_messages", integer=True, minimum=1)
+    mod_flood_action = _mod_action(moderation.get("flood_action", "mute"), "flood_action")
+    mod_flood_mute = _mod_number(moderation.get("flood_mute_seconds", 600), "flood_mute_seconds", integer=True)
+    mod_dup_window = _mod_number(moderation.get("duplicate_window_seconds", 30), "duplicate_window_seconds", minimum=0.1)
+    mod_dup_max = _mod_number(moderation.get("duplicate_max", 3), "duplicate_max", integer=True, minimum=2)
+    mod_dup_action = _mod_action(moderation.get("duplicate_action", "warn"), "duplicate_action")
+    mod_mention_all = _mod_action(moderation.get("mention_all_action", "warn"), "mention_all_action")
+    mod_warn_before = _mod_number(moderation.get("warn_before_mute", 3), "warn_before_mute", integer=True, minimum=1)
+    mod_strike_window = _mod_number(moderation.get("strike_window_seconds", 600), "strike_window_seconds")
+    mod_action_cd = _mod_number(moderation.get("action_cooldown_seconds", 30), "action_cooldown_seconds")
+    mod_default_mute = _mod_number(moderation.get("default_mute_seconds", 600), "default_mute_seconds", integer=True)
+    mod_max_mute = _mod_number(moderation.get("max_mute_seconds", 2592000), "max_mute_seconds", integer=True)
+    mod_exempt = moderation.get("exempt_group_admins", True)
+    if not isinstance(mod_exempt, bool):
+        raise ConfigError("[moderation].exempt_group_admins 应为 true / false")
+    mod_dry_run = moderation.get("dry_run", False)
+    if not isinstance(mod_dry_run, bool):
+        raise ConfigError("[moderation].dry_run 应为 true / false")
+    mod_warn_text = moderation.get("warn_text", _DEFAULT_MODERATION_WARN_TEXT)
+    if not isinstance(mod_warn_text, str) or not mod_warn_text.strip():
+        raise ConfigError("[moderation].warn_text 应为非空字符串")
+    mod_sensitive_dict = moderation.get("sensitive_dict", True)
+    if not isinstance(mod_sensitive_dict, bool):
+        raise ConfigError("[moderation].sensitive_dict 应为 true / false")
+    mod_sensitive_action = _mod_action(moderation.get("sensitive_action", "warn"), "sensitive_action")
+    mod_sensitive_skip = moderation.get("sensitive_skip", False)
+    if not isinstance(mod_sensitive_skip, bool):
+        raise ConfigError("[moderation].sensitive_skip 应为 true / false")
+    mod_sensitive_min = _mod_number(
+        moderation.get("sensitive_min_length", 2), "sensitive_min_length", integer=True, minimum=1
+    )
+    mod_sensitive_traditional = moderation.get("sensitive_traditional", True)
+    if not isinstance(mod_sensitive_traditional, bool):
+        raise ConfigError("[moderation].sensitive_traditional 应为 true / false")
+    mod_sensitive_pinyin = moderation.get("sensitive_pinyin", False)
+    if not isinstance(mod_sensitive_pinyin, bool):
+        raise ConfigError("[moderation].sensitive_pinyin 应为 true / false")
+    mod_sensitive_patterns = moderation.get("sensitive_patterns", True)
+    if not isinstance(mod_sensitive_patterns, bool):
+        raise ConfigError("[moderation].sensitive_patterns 应为 true / false")
+    mod_pattern_action = _mod_action(
+        moderation.get("sensitive_pattern_action", "warn"), "sensitive_pattern_action"
+    )
+
     return AppSettings(
         timezone=str(env.get("ACTBOT_TIMEZONE", "Asia/Shanghai")).strip() or "Asia/Shanghai",
         bootstrap_admin_qq=str(env.get("ACTBOT_BOOTSTRAP_ADMIN_QQ", "")).strip(),
@@ -224,6 +324,30 @@ def load_settings(
         backup_daily_at=daily_at,
         backup_keep_daily_days=int(keep_daily),
         backup_keep_monthly=int(keep_monthly),
+        moderation_flood_window_seconds=float(mod_flood_window),
+        moderation_flood_max_messages=int(mod_flood_max),
+        moderation_flood_action=mod_flood_action,
+        moderation_flood_mute_seconds=int(mod_flood_mute),
+        moderation_duplicate_window_seconds=float(mod_dup_window),
+        moderation_duplicate_max=int(mod_dup_max),
+        moderation_duplicate_action=mod_dup_action,
+        moderation_mention_all_action=mod_mention_all,
+        moderation_warn_before_mute=int(mod_warn_before),
+        moderation_strike_window_seconds=float(mod_strike_window),
+        moderation_action_cooldown_seconds=float(mod_action_cd),
+        moderation_default_mute_seconds=int(mod_default_mute),
+        moderation_max_mute_seconds=int(mod_max_mute),
+        moderation_exempt_group_admins=mod_exempt,
+        moderation_dry_run=mod_dry_run,
+        moderation_warn_text=mod_warn_text,
+        moderation_sensitive_dict=mod_sensitive_dict,
+        moderation_sensitive_action=mod_sensitive_action,
+        moderation_sensitive_skip=mod_sensitive_skip,
+        moderation_sensitive_min_length=int(mod_sensitive_min),
+        moderation_sensitive_traditional=mod_sensitive_traditional,
+        moderation_sensitive_pinyin=mod_sensitive_pinyin,
+        moderation_sensitive_patterns=mod_sensitive_patterns,
+        moderation_sensitive_pattern_action=mod_pattern_action,
     )
 
 
