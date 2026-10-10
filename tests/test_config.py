@@ -40,6 +40,24 @@ keep_daily_days = 7
     assert settings.backup_keep_daily_days == 7
 
 
+def test_alert_uplink_switch(tmp_path):
+    toml = tmp_path / "config.toml"
+    toml.write_text("[alert]\nuplink = false\n", encoding="utf-8")
+    settings = config.load_settings(env={}, toml_path=toml, load_dotenv_first=False)
+    assert settings.alert_uplink is False
+
+    # 未配置时默认开启
+    missing = tmp_path / "missing.toml"
+    assert config.load_settings(env={}, toml_path=missing, load_dotenv_first=False).alert_uplink is True
+
+
+def test_invalid_alert_uplink(tmp_path):
+    toml = tmp_path / "config.toml"
+    toml.write_text('[alert]\nuplink = "yes"\n', encoding="utf-8")
+    with pytest.raises(ConfigError):
+        config.load_settings(env={}, toml_path=toml, load_dotenv_first=False)
+
+
 def test_env_overrides(tmp_path):
     toml = tmp_path / "config.toml"
     toml.write_text('[backup]\ndaily_at = "01:00"\n', encoding="utf-8")

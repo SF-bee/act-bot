@@ -79,7 +79,7 @@ act-bot/
 ├─ .gitignore
 ├─ src/
 │  ├─ bot.py                     # 启动入口（跨平台）
-│  ├─ core/                      # config / db / permissions / scheduler / push / notify / backup / paths
+│  ├─ core/                      # config / db / permissions / scheduler / push / notify / uplink / backup / paths
 │  ├─ models/
 │  └─ plugins/                   # 每功能一个目录
 │     ├─ help/ about/ departments/ welcome/ events/

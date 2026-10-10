@@ -42,6 +42,7 @@ uv run python scripts/smoke_fake.py
 | 群管理 · 风控 | 违规消息 / `/mod` 等命令 | 内置 6.2 万词库（已排除政治类）+ 自定义规则，命中自动**撤回+警告**、刷屏禁言、复读/@全体可配；`/mod` 管理规则、`/warn` `/mute` `/unmute` `/kick` `/recall` 手动处置；**支持私聊管理**（`/use` 绑定默认群或 `-g` 单次指定，`-s` 静默只审计）；开关走 `/config moderation on|off` |
 | 活跃统计 | `/统计`（别名 `/stats`） | 支持时间区间：`今天` / `昨天` / `本周` / `上周` / `本月` / `近N天`，附「近 N 日」迷你走势与峰值日；**成员与管理员看到的内容不同**（管理员多看命令数、自动回复数、错误数、今日活跃 Top N）；每天 `[stats].digest_at` 把昨日各群简报**私聊给管理员**（不打扰群）；内存累加 + 定时落库（`[stats].flush_seconds`），**不存消息正文、不落库每人发言数**；开关走 `/config stats on|off` |
 | 定时推送 | 到点自动发（配置驱动） | 在 `config/config.toml` 写 `[[push]]` 段落即可增删：每天/每周固定时刻，发给全部群 / 指定群 / 私聊管理员；支持 `{date}` 等占位符与群级功能过滤；`/push` 查看、`/push test <名称>` 试发；详见 `docs/scheduler.md` |
+| 掉线提醒 | 被踢下线后重新上线时（私聊管理员） | 腾讯回收登录态（`notice.bot_offline`）时，掉线那一刻账号已经不在线、私聊发不出去，所以改为**重新上线后**私聊管理员一条汇总：掉线时刻 / 掉线前在线多久 / 离线多久；开关 `[alert].uplink`（默认开），实现见 `src/core/uplink.py` |
 | 权限查看 | `/权限`（别名 `/op`） | 查看自己的角色与管理员名单 |
 | 群功能开关 | `/config`、`/config <功能> on|off` | 管理员可按群开关功能（写 `groups.features`）；功能名册见 `src/core/features.py`，新增功能不用改命令 |
 | 管理操作审计 | `/audit [n]` | 谁在哪个群做了什么（改配置等），管理员可查；写入见 `src/core/audit.py` |
@@ -132,7 +133,7 @@ act-bot/
 ├─ bot.py            # 启动入口
 ├─ src/              # 业务代码（跨平台）
 │  ├─ bot.py         # 启动逻辑
-│  ├─ core/          # config / db / permissions / backup / scheduler / push / notify
+│  ├─ core/          # config / db / permissions / backup / scheduler / push / notify / uplink
 │  ├─ models/        # 数据模型
 │  └─ plugins/       # 功能插件
 ├─ scripts/          # 运维脚本（全部 Python，跨平台）

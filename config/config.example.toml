@@ -64,6 +64,12 @@ keep_daily_days = 30
 # 另外保留最近 N 个月的月度副本
 keep_monthly = 6
 
+[alert]
+# 协议端掉线提醒：腾讯回收登录态（notice.bot_offline「你的账号当前登录已失效」）时记下
+# 时间，等协议端重新连上再私聊管理员一条汇总（掉线时刻 / 掉线前在线多久 / 离线多久）。
+# 为什么不在掉线那一刻发：那时账号已经不在线，私聊发不出去。见 src/core/uplink.py
+uplink = true
+
 [moderation]
 # 群风控（敏感信息撤回警告 / 刷屏禁言 / @全体 / 复读）
 # 群级开关用 /config moderation on|off；规则用 /mod add 维护（不预置敏感词）

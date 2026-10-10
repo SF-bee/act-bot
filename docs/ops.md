@@ -9,7 +9,7 @@
 - NapCat 掉线时优先检查其 WebUI（默认 6099）。
 - 日志里 `notice.bot_offline`（“你的账号当前登录已失效”）= **腾讯回收了第三方登录态**，与业务层无关；配了 `NAPCAT_QUICK_PASSWORD` 时 NapCat 会自动密码重登，否则要扫码（`bash deploy/docker/fetch-qr.sh`）。
 - 日志里业务进程 `Shutting down` → 5 秒后重连，属于**业务层重启**（launchd/systemd KeepAlive 自愈），不是掉 QQ。
-
+- 不想盯日志：`[alert].uplink = true`（默认）时，被踢下线会被记下来，协议端重新连上后私聊管理员一条汇总（掉线时刻 / 掉线前在线多久 / 离线多久）；实现见 `src/core/uplink.py`。
 ## 2. 小号被风控 / 封禁（换号流程）
 
 1. 停 bot；

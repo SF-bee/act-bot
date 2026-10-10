@@ -110,6 +110,8 @@ class AppSettings:
     moderation_sensitive_pattern_action: str = "warn"
     # 定时推送（config.toml 的 [[push]]；见 src/core/push.py）
     pushes: tuple[PushSchedule, ...] = ()
+    # 协议端被踢下线后、重新上线时私聊管理员（[alert]；见 src/core/uplink.py）
+    alert_uplink: bool = True
 
     def feature(self, name: str) -> bool:
         """功能开关查询；未定义的开关默认开启。"""
@@ -442,6 +444,13 @@ def load_settings(
         moderation.get("sensitive_pattern_action", "warn"), "sensitive_pattern_action"
     )
 
+    alert = raw.get("alert", {})
+    if not isinstance(alert, dict):
+        raise ConfigError("[alert] 段落格式错误：应为键值对")
+    alert_uplink = alert.get("uplink", True)
+    if not isinstance(alert_uplink, bool):
+        raise ConfigError("[alert].uplink 应为 true / false")
+
     pushes = _parse_pushes(raw.get("push"))
 
     return AppSettings(
@@ -493,6 +502,7 @@ def load_settings(
         moderation_sensitive_patterns=mod_sensitive_patterns,
         moderation_sensitive_pattern_action=mod_pattern_action,
         pushes=pushes,
+        alert_uplink=alert_uplink,
     )
 
 
