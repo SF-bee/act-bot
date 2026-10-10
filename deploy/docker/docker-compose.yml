@@ -12,9 +12,19 @@ name: act-bot
 
 services:
   napcat:
-    image: mlikiowa/napcat-docker:latest
+    # 镜像 tag = NapCat 版本，且**自带对应的 QQ 版本**（Docker 里 QQ 由镜像构建时钉死）。
+    # 切换/回滚版本用 NAPCAT_IMAGE_TAG（如 v4.15.0）；生产别用 latest。
+    # 想连镜像里的 /etc/machine-id 一起锁死（一次 pull 换镜像 = 换设备身份），用 NAPCAT_IMAGE
+    # 给完整引用（tag 或 digest），它优先于 NAPCAT_IMAGE_TAG：
+    #   NAPCAT_IMAGE=mlikiowa/napcat-docker@sha256:<digest>
+    # 取 digest：docker image inspect mlikiowa/napcat-docker:latest --format '{{index .RepoDigests 0}}'
+    image: ${NAPCAT_IMAGE:-mlikiowa/napcat-docker:${NAPCAT_IMAGE_TAG:-latest}}
     container_name: act-napcat
     restart: unless-stopped
+    # 固定网卡 MAC（重要）：NapCat 的 Linux 设备指纹 = MD5(/etc/machine-id + 容器 MAC)，
+    # 而 Docker 每次「重建」容器都会分配新 MAC，腾讯便判定为新设备并要求验证。
+    # 老部署请把当前 MAC 填进 deploy/docker/.env 的 NAPCAT_MAC，以保住现有设备身份。
+    mac_address: "${NAPCAT_MAC:-02:42:ac:11:00:42}"
     environment:
       # Linux 宿主：NAPCAT_UID=$(id -u) NAPCAT_GID=$(id -g) docker compose up -d
       # Windows / macOS：保持默认（Docker Desktop 下 UID/GID 语义不同，见 README）
