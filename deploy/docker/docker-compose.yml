@@ -13,9 +13,11 @@ name: act-bot
 services:
   napcat:
     # 镜像 tag = NapCat 版本，且**自带对应的 QQ 版本**（Docker 里 QQ 由镜像构建时钉死）。
-    # 切换/回滚版本用 NAPCAT_IMAGE_TAG（如 v4.15.0）；生产别用 latest。
-    # 想连镜像里的 /etc/machine-id 一起锁死（一次 pull 换镜像 = 换设备身份），用 NAPCAT_IMAGE
-    # 给完整引用（tag 或 digest），它优先于 NAPCAT_IMAGE_TAG：
+    # 切换/回滚版本用 NAPCAT_IMAGE_TAG（如 v4.18.37）；生产别用 latest（一次 pull 就会
+    # 把 NapCat/QQ 悄悄换成新版）。用 NAPCAT_IMAGE 给完整引用（tag 或 digest）钉死版本，
+    # 它优先于 NAPCAT_IMAGE_TAG。
+    # 注：设备身份不随镜像变（实测各版本镜像的 /etc/machine-id 相同 = 19a5f94f…），
+    # 真正会让设备身份漂移的是容器 MAC，见下面的 mac_address。
     #   NAPCAT_IMAGE=mlikiowa/napcat-docker@sha256:<digest>
     # 取 digest：docker image inspect mlikiowa/napcat-docker:latest --format '{{index .RepoDigests 0}}'
     image: ${NAPCAT_IMAGE:-mlikiowa/napcat-docker:${NAPCAT_IMAGE_TAG:-latest}}

@@ -32,18 +32,18 @@ NAPCAT_UID=$(id -u) NAPCAT_GID=$(id -g) docker compose -f deploy/docker/docker-c
 
    再设 `NAPCAT_QUICK_PASSWORD=<QQ密码>` 作为**回退**：当快速登录的登录态被腾讯回收（日志出现 `notice.bot_offline` / “你的账号当前登录已失效”）时，NapCat 会自动用密码重登，不必人工扫码。也可用 `NAPCAT_QUICK_PASSWORD_MD5` 填 32 位 MD5。两个变量都只放 `deploy/docker/.env`（不入库）。
 
-   **设备指纹稳定**：NapCat 的 Linux 设备标识 = `MD5(/etc/machine-id + 容器 MAC)`。`/etc/machine-id` 来自镜像（稳定），但 **Docker 每次重建容器都会换 MAC**，于是腾讯判定“新设备”并要验证。compose 已固定 MAC（`NAPCAT_MAC` 可覆盖）；**老部署**想保住现有设备，把当前 MAC 填进 `deploy/docker/.env` 的 `NAPCAT_MAC`（取法见 `.env.example` 注释）。
+   **设备指纹稳定**：NapCat 的 Linux 设备标识 = `MD5(/etc/machine-id + 容器 MAC)`。`/etc/machine-id` 来自镜像，且**同一仓库各版本镜像取值相同**（实测 v4.18.28 与 v4.18.37 均为 `19a5f94f…`，换镜像不换设备）；会漂移的只有 **MAC**——**Docker 每次重建容器都会重新分配**，于是腾讯判定“新设备”并要验证。compose 已固定 MAC（`NAPCAT_MAC` 可覆盖）；**老部署**想保住现有设备，把当前 MAC 填进 `deploy/docker/.env` 的 `NAPCAT_MAC`（取法见 `.env.example` 注释）。
 
    **版本可切换**：`NAPCAT_IMAGE_TAG` 控制 NapCat 镜像 tag（镜像自带对应的 QQ 版本，Docker 里两者绑定）。默认 `latest`；出问题时可用它一行降级/回滚，例如 `NAPCAT_IMAGE_TAG=v4.15.0`，然后：`docker compose -f deploy/docker/docker-compose.yml pull napcat && docker compose -f deploy/docker/docker-compose.yml up -d napcat`。
 
-   **镜像要钉死（推荐）**：`latest` 的隐患是下一次 `pull` 会换上镜像里烘焙的新 `/etc/machine-id`，而它参与设备指纹——腾讯随即判定「新设备」。生产用 `NAPCAT_IMAGE` 填完整引用把它钉死（优先级高于 `NAPCAT_IMAGE_TAG`）：
+   **镜像要钉死（推荐）**：钉死是为了锁住**版本**——镜像 tag = NapCat 版本，QQ 版本也由镜像在构建时钉死，`latest` 下一次 `pull` 就会把两者换成新版（升级应当是知情动作）。生产用 `NAPCAT_IMAGE` 填完整引用把它钉死（优先级高于 `NAPCAT_IMAGE_TAG`）：
 
    ```bash
    docker image inspect mlikiowa/napcat-docker:latest --format '{{index .RepoDigests 0}}'
    # → mlikiowa/napcat-docker@sha256:... 填进 deploy/docker/.env 的 NAPCAT_IMAGE=
    ```
 
-   升版本时改这个 digest（或临时清空 `NAPCAT_IMAGE` 用 tag），并预期一次设备验证。
+   升版本时改这个 digest（或临时清空 `NAPCAT_IMAGE` 用 tag）。实测 **v4.18.28 → v4.18.37（QQ 3.2.30-50969 → 3.2.34-53644）重建后仍直接 `正在快速登录`，不需要重新验证**，回滚同理。建议换版本前先给旧镜像打个本地 tag 备用：`docker tag <旧 image id> mlikiowa/napcat-docker:pinned-<日期>`。
 1. 取 WebUI 登录 token：`docker compose -f deploy/docker/docker-compose.yml logs act-napcat | head -50`
 2. 隧道访问 WebUI（**不要**把 6099 暴露公网）：
    ```bash
