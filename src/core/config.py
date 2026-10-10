@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .features import all_features
+from .features import all_features, get as feature_get, names as feature_names
 from .paths import config_file, env_file
 
 try:  # Python >= 3.11 自带 tomllib
@@ -43,6 +43,19 @@ _DEFAULT_MODERATION_ACTIONS = ("warn", "recall_only", "mute", "kick")
 
 
 @dataclass(frozen=True)
+class PushSchedule:
+    """一条定时推送（来自 config.toml 的 ``[[push]]``；执行逻辑见 src/core/push.py）。"""
+
+    name: str
+    text: str
+    times: tuple[tuple[int, int], ...] = ()
+    weekdays: tuple[int, ...] = ()
+    targets: tuple[str, ...] = ("admins",)
+    feature: str = ""
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
 class AppSettings:
     """应用设置（只读快照）。"""
 
@@ -63,7 +76,9 @@ class AppSettings:
     chat_escalate_window_seconds: float = 120.0
     stats_flush_seconds: float = 60.0
     stats_top_users: int = 5
-    stats_history_days: int = 7
+    stats_trend_days: int = 7
+    stats_range_max_days: int = 90
+    stats_digest_at: str = "09:00"
     backup_daily_at: str = "03:00"
     backup_keep_daily_days: int = 30
     backup_keep_monthly: int = 6
@@ -93,6 +108,8 @@ class AppSettings:
     moderation_sensitive_pinyin: bool = False
     moderation_sensitive_patterns: bool = True
     moderation_sensitive_pattern_action: str = "warn"
+    # 定时推送（config.toml 的 [[push]]；见 src/core/push.py）
+    pushes: tuple[PushSchedule, ...] = ()
 
     def feature(self, name: str) -> bool:
         """功能开关查询；未定义的开关默认开启。"""
@@ -129,6 +146,120 @@ def parse_hhmm(value: str) -> tuple[int, int]:
     if not (0 <= hour <= 23 and 0 <= minute <= 59):
         raise ConfigError(f"时间超出范围（当前为 {value!r}）")
     return hour, minute
+
+
+WEEKDAY_NAMES: tuple[str, ...] = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+_WEEKDAY_ALIASES: dict[str, int] = {
+    "mon": 0, "monday": 0, "周一": 0, "星期一": 0,
+    "tue": 1, "tuesday": 1, "周二": 1, "星期二": 1,
+    "wed": 2, "wednesday": 2, "周三": 2, "星期三": 2,
+    "thu": 3, "thursday": 3, "周四": 3, "星期四": 3,
+    "fri": 4, "friday": 4, "周五": 4, "星期五": 4,
+    "sat": 5, "saturday": 5, "周六": 5, "星期六": 5,
+    "sun": 6, "sunday": 6, "周日": 6, "周天": 6, "星期日": 6, "星期天": 6,
+}
+
+_TARGET_ADMINS = "admins"
+_TARGET_ALL = "all"
+
+
+def parse_weekdays(value: Any, *, where: str = "weekdays") -> tuple[int, ...]:
+    """解析星期数组（mon..sun / 周一..周日）；空数组表示每天。"""
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ConfigError(f'{where} 应为字符串数组，如 ["mon", "wed"] 或 ["周一", "周三"]')
+    days: list[int] = []
+    for item in value:
+        key = item.strip().lower()
+        if key not in _WEEKDAY_ALIASES:
+            raise ConfigError(f"{where} 含无法识别的星期 {item!r}（可用 mon..sun 或 周一..周日）")
+        day = _WEEKDAY_ALIASES[key]
+        if day not in days:
+            days.append(day)
+    return tuple(sorted(days))
+
+
+def _parse_pushes(raw: Any) -> tuple[PushSchedule, ...]:
+    """解析 ``[[push]]`` 数组；配置错误抛出 :class:`ConfigError`。"""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ConfigError("[[push]] 应为数组（TOML 里写成 [[push]] 段落）")
+    schedules: list[PushSchedule] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(raw, start=1):
+        label = f"[[push]] 第 {index} 条"
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{label}格式错误：应为键值对")
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            raise ConfigError(f"{label}缺少 name（用于日志与 /推送 列表）")
+        if name in seen:
+            raise ConfigError(f"推送名称重复：{name!r}（name 需唯一）")
+        seen.add(name)
+        text = entry.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ConfigError(f"{label}「{name}」缺少 text（推送内容）")
+
+        raw_at = entry.get("at")
+        if isinstance(raw_at, str):
+            at_items: list[Any] = [raw_at]
+        elif isinstance(raw_at, list) and raw_at:
+            at_items = list(raw_at)
+        else:
+            raise ConfigError(
+                f'{label}「{name}」缺少 at（格式 HH:MM，或 ["08:00", "20:00"]）'
+            )
+        times: list[tuple[int, int]] = []
+        for item in at_items:
+            if not isinstance(item, str):
+                raise ConfigError(f"{label}「{name}」的 at 里含非字符串：{item!r}")
+            moment = parse_hhmm(item)
+            if moment not in times:
+                times.append(moment)
+
+        weekdays = parse_weekdays(entry.get("weekdays", []), where=f"{label}「{name}」的 weekdays")
+
+        raw_targets = entry.get("targets")
+        if raw_targets is None:
+            targets = (_TARGET_ADMINS,)
+        elif isinstance(raw_targets, list) and raw_targets:
+            cleaned: list[str] = []
+            for item in raw_targets:
+                token = str(item).strip()
+                if not token:
+                    raise ConfigError(f"{label}「{name}」的 targets 里含空值")
+                cleaned.append(token)
+            targets = tuple(dict.fromkeys(cleaned))
+        else:
+            raise ConfigError(
+                f'{label}「{name}」的 targets 应为非空数组（"admins" / "all" / 群号）'
+            )
+
+        feature = str(entry.get("feature", "") or "").strip().lower()
+        if feature and feature_get(feature) is None:
+            raise ConfigError(
+                f"{label}「{name}」的 feature 未登记：{feature!r}"
+                f"（可用 {', '.join(feature_names())}）"
+            )
+        enabled = entry.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ConfigError(f"{label}「{name}」的 enabled 应为 true / false")
+
+        schedules.append(
+            PushSchedule(
+                name=name,
+                text=text,
+                times=tuple(sorted(times)),
+                weekdays=weekdays,
+                targets=targets,
+                feature=feature,
+                enabled=enabled,
+            )
+        )
+    return tuple(schedules)
 
 
 def _mod_action(value: Any, key: str) -> str:
@@ -241,9 +372,18 @@ def load_settings(
     stats_top = stats_cfg.get("top_users", 5)
     if isinstance(stats_top, bool) or not isinstance(stats_top, int) or stats_top < 0:
         raise ConfigError("[stats].top_users 应为非负整数")
-    stats_days = stats_cfg.get("history_days", 7)
-    if isinstance(stats_days, bool) or not isinstance(stats_days, int) or stats_days < 1:
-        raise ConfigError("[stats].history_days 应为 >= 1 的整数")
+    stats_trend = stats_cfg.get("trend_days", 7)
+    if isinstance(stats_trend, bool) or not isinstance(stats_trend, int) or stats_trend < 1:
+        raise ConfigError("[stats].trend_days 应为 >= 1 的整数")
+    stats_range_max = stats_cfg.get("range_max_days", 90)
+    if isinstance(stats_range_max, bool) or not isinstance(stats_range_max, int) or stats_range_max < 1:
+        raise ConfigError("[stats].range_max_days 应为 >= 1 的整数")
+    # 每日简报时间：HH:MM；off / none / disable / 空串 表示不发
+    stats_digest_at = str(stats_cfg.get("digest_at", "09:00")).strip()
+    if stats_digest_at.lower() in ("off", "none", "disable", "disabled"):
+        stats_digest_at = ""
+    elif stats_digest_at:
+        parse_hhmm(stats_digest_at)
 
     backup = raw.get("backup", {})
     daily_at = str(backup.get("daily_at", "03:00"))
@@ -302,6 +442,8 @@ def load_settings(
         moderation.get("sensitive_pattern_action", "warn"), "sensitive_pattern_action"
     )
 
+    pushes = _parse_pushes(raw.get("push"))
+
     return AppSettings(
         timezone=str(env.get("ACTBOT_TIMEZONE", "Asia/Shanghai")).strip() or "Asia/Shanghai",
         bootstrap_admin_qq=str(env.get("ACTBOT_BOOTSTRAP_ADMIN_QQ", "")).strip(),
@@ -320,7 +462,9 @@ def load_settings(
         chat_escalate_window_seconds=float(chat_window),
         stats_flush_seconds=float(stats_flush),
         stats_top_users=int(stats_top),
-        stats_history_days=int(stats_days),
+        stats_trend_days=int(stats_trend),
+        stats_range_max_days=int(stats_range_max),
+        stats_digest_at=stats_digest_at,
         backup_daily_at=daily_at,
         backup_keep_daily_days=int(keep_daily),
         backup_keep_monthly=int(keep_monthly),
@@ -348,6 +492,7 @@ def load_settings(
         moderation_sensitive_pinyin=mod_sensitive_pinyin,
         moderation_sensitive_patterns=mod_sensitive_patterns,
         moderation_sensitive_pattern_action=mod_pattern_action,
+        pushes=pushes,
     )
 
 

@@ -56,6 +56,18 @@ def main() -> None:
         await scope.load_all()
         scheduler.setup_and_start()
 
+    @driver.on_bot_connect
+    async def _on_bot_connect(bot) -> None:
+        """协议端连上后同步群名册（定时推送的 targets=["all"] 靠它）。"""
+        from src.core import groups
+
+        try:
+            count = await groups.sync_from_bot(bot)
+            if count:
+                logger.info("群名册已同步：%d 个群", count)
+        except Exception:  # noqa: BLE001 - 同步失败不影响机器人运行
+            logger.exception("群名册同步失败")
+
     @driver.on_shutdown
     async def _on_shutdown() -> None:
         from src.core import db, scheduler, stats

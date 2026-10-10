@@ -4,18 +4,27 @@
     messages / commands / auto_replies / joins / leaves / active_users(当日人数快照)
     online_seconds / errors（全局）
 
-两条自我约束：
+三条自我约束：
 1. **不存消息正文**；
-2. **不落库「每人发了多少条」**——当天 Top N 只在内存里留着给管理员看，重启即清空。
+2. **不落库「每人发了多少条」**——当天 Top N 只在内存里留着给管理员看，重启即清空；
+3. **读路径必须合并内存与库**：今天的数字 = 内存增量 + 当日已落库。
 
-今天的数字读内存（实时），历史读 ``stats_daily`` 表。
+第 3 条是修 bug 加的：旧实现里 ``summary()`` 只读内存 pending，而 ``flush()`` 每
+``[stats].flush_seconds`` 秒就把 pending 清空，于是 /统计 的「今日消息」每隔一分钟
+就归零重爬。现在统一走 :func:`daily_series`：先读库、再叠加今天的内存增量。
+
+活跃人数（active_users）是**当日去重人数**，语义上只增不减，所以落库用 ``max``：
+旧实现直接覆盖，重启后内存集合清空，一次小值 flush 就能把当天人数改小。
 """
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import date as _date
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -36,11 +45,24 @@ METRIC_ACTIVE_USERS = "active_users"
 METRIC_ONLINE_SECONDS = "online_seconds"
 METRIC_ERRORS = "errors"
 
-# 累加型指标（落库时 +）与快照型指标（落库时 =）
+# 累加型指标（落库时 +）与快照型指标（落库时取 max）
 SNAPSHOT_METRICS = (METRIC_ACTIVE_USERS,)
 GLOBAL_GROUP = ""
 
 DEFAULT_TZ = "Asia/Shanghai"
+
+# 逐日序列/汇总用到的指标（同时也是 DailyStat 的字段名）
+_SERIES_FIELDS = (
+    METRIC_MESSAGES,
+    METRIC_COMMANDS,
+    METRIC_AUTO_REPLIES,
+    METRIC_JOINS,
+    METRIC_LEAVES,
+    METRIC_ACTIVE_USERS,
+)
+
+_SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
+_SPARK_EMPTY = "·"
 
 
 @dataclass
@@ -50,6 +72,52 @@ class _Bucket:
     pending: Counter = field(default_factory=Counter)  # 待落库的增量
     users: set[str] = field(default_factory=set)  # 当天活跃用户（去重）
     user_counts: Counter = field(default_factory=Counter)  # 仅内存：当天发言次数
+
+
+@dataclass(frozen=True)
+class DailyStat:
+    """某群某天的一行统计（字段名与指标名一致，便于批量构造）。"""
+
+    date: str
+    messages: int = 0
+    commands: int = 0
+    auto_replies: int = 0
+    joins: int = 0
+    leaves: int = 0
+    active_users: int = 0
+
+
+@dataclass(frozen=True)
+class DateRange:
+    """一个已解析的时间区间（``dates`` 新 → 旧）。"""
+
+    label: str
+    dates: tuple[str, ...]
+
+    @property
+    def days(self) -> int:
+        return len(self.dates)
+
+    @property
+    def single_day(self) -> bool:
+        return len(self.dates) == 1
+
+
+@dataclass(frozen=True)
+class DigestEntry:
+    """日报里的一行（一个群）。"""
+
+    group_id: str
+    group_name: str
+    stat: DailyStat
+
+
+@dataclass(frozen=True)
+class DailyDigest:
+    """每日活跃简报（某天的各群数据）。"""
+
+    date: str
+    entries: tuple[DigestEntry, ...] = ()
 
 
 _buckets: dict[tuple[str, str], _Bucket] = {}
@@ -70,10 +138,67 @@ def today(tz_name: str = DEFAULT_TZ) -> str:
     return datetime.now(_tz(tz_name)).strftime("%Y-%m-%d")
 
 
-def recent_dates(days: int, *, tz_name: str = DEFAULT_TZ) -> list[str]:
-    """最近 ``days`` 天（含今天）的日期串，新 → 旧。"""
-    anchor = datetime.now(_tz(tz_name)).date()
-    return [(anchor - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(0, max(1, int(days)))]
+def recent_dates(days: int, *, tz_name: str = DEFAULT_TZ, anchor: str | None = None) -> list[str]:
+    """以 ``anchor``（默认今天）为终点，往前取 ``days`` 天的日期串，新 → 旧。"""
+    base = _date.fromisoformat(anchor) if anchor else datetime.now(_tz(tz_name)).date()
+    return [
+        (base - timedelta(days=offset)).strftime("%Y-%m-%d")
+        for offset in range(0, max(1, int(days)))
+    ]
+
+
+_RANGE_RE = re.compile(r"^(?:近|最近|last)?\s*(\d+)\s*(?:天|日|d|days?)?$")
+_RANGE_TODAY = ("", "今天", "今日", "today")
+_RANGE_YESTERDAY = ("昨天", "昨日", "yesterday")
+_RANGE_THIS_WEEK = ("本周", "这周", "本星期", "week", "this week")
+_RANGE_LAST_WEEK = ("上周", "上星期", "last week")
+_RANGE_THIS_MONTH = ("本月", "这个月", "month", "this month")
+
+
+def parse_range(
+    argument: str,
+    *,
+    tz_name: str = DEFAULT_TZ,
+    max_days: int = 90,
+) -> DateRange | None:
+    """解析 /统计 的时间参数；无法识别返回 None（调用方给出用法提示）。
+
+    支持：留空/今天/昨天/本周/上周/本月/近 N 天（近 7 天、7 天、last 7 days 都行）。
+    "近 N 天"会被 ``max_days`` 截断，避免一次拉太多天。
+    """
+    text = (argument or "").strip().lower()
+    now = datetime.now(_tz(tz_name))
+    day = now.date()
+    limit = max(1, int(max_days))
+
+    def back(count: int) -> tuple[str, ...]:
+        count = min(max(1, count), limit)
+        return tuple((day - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(count))
+
+    if text in _RANGE_TODAY:
+        return DateRange("今天", back(1))
+    if text in _RANGE_YESTERDAY:
+        yesterday = (day - timedelta(days=1)).strftime("%Y-%m-%d")
+        return DateRange("昨天", (yesterday,))
+    if text in _RANGE_THIS_WEEK:
+        span = day.weekday() + 1  # 周一 = 0
+        return DateRange("本周", back(span))
+    if text in _RANGE_LAST_WEEK:
+        # 上周一 → 上周日
+        start = day - timedelta(days=day.weekday() + 7)
+        dates = tuple((start + timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(7))
+        return DateRange("上周", tuple(reversed(dates)))
+    if text in _RANGE_THIS_MONTH:
+        return DateRange("本月", back(day.day))
+
+    match = _RANGE_RE.match(text)
+    if match:
+        wanted = int(match.group(1))
+        if wanted < 1:
+            return None
+        count = min(wanted, limit)
+        return DateRange("近 {0} 天".format(count), back(count))
+    return None
 
 
 def command_name(text: str, prefixes: tuple[str, ...] = ("/",)) -> str | None:
@@ -175,19 +300,19 @@ def format_duration(seconds: float) -> str:
     return "{0} 秒".format(secs)
 
 
-def summary(group_id: str, *, tz_name: str = DEFAULT_TZ) -> dict[str, int]:
-    """本群今天的实时数字（内存）。"""
-    bucket = _buckets.get((str(group_id), today(tz_name)))
-    if bucket is None:
-        return {}
-    data = {metric: int(value) for metric, value in bucket.pending.items()}
-    data[METRIC_ACTIVE_USERS] = len(bucket.users)
-    return data
-
-
-def pending_errors() -> int:
-    """尚未落库的错误计数（与库里的今日值相加才是总数）。"""
-    return int(_errors)
+def sparkline(values: Sequence[int]) -> str:
+    """把数字序列画成迷你走势（``▁▂▃▄▅▆▇█``，0 用 ``·`` 表示）。纯函数。"""
+    numbers = [max(0, int(value)) for value in values]
+    if not numbers:
+        return ""
+    top = max(numbers)
+    if top <= 0:
+        return _SPARK_EMPTY * len(numbers)
+    last = len(_SPARK_BLOCKS) - 1
+    return "".join(
+        _SPARK_EMPTY if value <= 0 else _SPARK_BLOCKS[min(last, int(value / top * last + 0.5))]
+        for value in numbers
+    )
 
 
 def top_users(group_id: str, *, limit: int = 5, tz_name: str = DEFAULT_TZ) -> list[tuple[str, int]]:
@@ -198,8 +323,104 @@ def top_users(group_id: str, *, limit: int = 5, tz_name: str = DEFAULT_TZ) -> li
     return bucket.user_counts.most_common(max(1, int(limit)))
 
 
+def pending_errors() -> int:
+    """尚未落库的错误计数（与库里的今日值相加才是总数）。"""
+    return int(_errors)
+
+
+def _merge_memory(group_id: str, table: dict[str, dict[str, int]], *, tz_name: str) -> None:
+    """把今天尚未落库的内存增量叠加到 ``table``（就地修改）。"""
+    current = today(tz_name)
+    bucket = _buckets.get((group_id, current))
+    if bucket is None:
+        return
+    slot = table.setdefault(current, {})
+    for metric, value in bucket.pending.items():
+        slot[metric] = int(slot.get(metric, 0)) + int(value)
+    slot[METRIC_ACTIVE_USERS] = max(int(slot.get(METRIC_ACTIVE_USERS, 0)), len(bucket.users))
+
+
+async def daily_series(
+    group_id: str,
+    dates: Sequence[str],
+    *,
+    tz_name: str = DEFAULT_TZ,
+) -> list[DailyStat]:
+    """按给定日期取逐日统计（**已合并今天的内存增量**），顺序与 ``dates`` 一致。
+
+    这是读路径的唯一入口：库里没有的当天数字，从内存补齐。
+    """
+    gid = str(group_id)
+    wanted = list(dict.fromkeys(str(item) for item in dates))
+    if not wanted:
+        return []
+    async with db.get_session() as session:
+        rows = (
+            await session.execute(
+                select(StatsDaily).where(
+                    StatsDaily.group_id == gid,
+                    StatsDaily.date.in_(wanted),
+                    StatsDaily.metric.in_(_SERIES_FIELDS),
+                )
+            )
+        ).scalars().all()
+    table: dict[str, dict[str, int]] = {}
+    for row in rows:
+        table.setdefault(str(row.date), {})[str(row.metric)] = int(row.value)
+    _merge_memory(gid, table, tz_name=tz_name)
+    return [
+        DailyStat(date=item, **{name: int(table.get(item, {}).get(name, 0)) for name in _SERIES_FIELDS})
+        for item in wanted
+    ]
+
+
+def summarize(days: Sequence[DailyStat]) -> dict[str, int]:
+    """把一个区间的逐日数据汇总成总量 + 均值（纯函数）。"""
+    items = list(days)
+    count = len(items)
+    data = {
+        METRIC_MESSAGES: sum(item.messages for item in items),
+        METRIC_COMMANDS: sum(item.commands for item in items),
+        METRIC_AUTO_REPLIES: sum(item.auto_replies for item in items),
+        METRIC_JOINS: sum(item.joins for item in items),
+        METRIC_LEAVES: sum(item.leaves for item in items),
+        # 活跃人数是"当日去重人数"，跨天不能相加，这里给区间最高值，均值另给
+        METRIC_ACTIVE_USERS: max((item.active_users for item in items), default=0),
+        "days": count,
+        "message_avg": round(sum(item.messages for item in items) / count) if count else 0,
+        "active_avg": round(sum(item.active_users for item in items) / count) if count else 0,
+    }
+    return data
+
+
+async def errors_total(
+    dates: Sequence[str],
+    *,
+    tz_name: str = DEFAULT_TZ,
+    include_pending: bool = True,
+) -> int:
+    """区间内的全局错误数（含尚未落库的部分，若今天在区间内）。"""
+    wanted = [str(item) for item in dates]
+    if not wanted:
+        return 0
+    async with db.get_session() as session:
+        rows = (
+            await session.execute(
+                select(StatsDaily).where(
+                    StatsDaily.group_id == GLOBAL_GROUP,
+                    StatsDaily.date.in_(wanted),
+                    StatsDaily.metric == METRIC_ERRORS,
+                )
+            )
+        ).scalars().all()
+    total = sum(int(row.value) for row in rows)
+    if include_pending and today(tz_name) in wanted:
+        total += pending_errors()
+    return total
+
+
 async def flush(*, tz_name: str = DEFAULT_TZ) -> int:
-    """把内存增量写进 ``stats_daily``（累加型 + 快照型分别处理）。返回写入行数。"""
+    """把内存增量写进 ``stats_daily``（累加型 +，快照型取 max）。返回写入行数。"""
     global _last_flush_at, _errors
     if not _enabled():
         return 0
@@ -238,7 +459,8 @@ async def flush(*, tz_name: str = DEFAULT_TZ) -> int:
             if row is None:
                 session.add(StatsDaily(group_id=group_id, date=date, metric=metric, value=value))
             elif metric in SNAPSHOT_METRICS:
-                row.value = value
+                # 当日去重人数只增不减：max 避免重启后内存集合变小把数值改小
+                row.value = max(int(row.value), value)
             else:
                 row.value = int(row.value) + value
         await session.commit()
@@ -248,7 +470,7 @@ async def flush(*, tz_name: str = DEFAULT_TZ) -> int:
 
 
 async def metric_today(metric: str, group_id: str = GLOBAL_GROUP, *, tz_name: str = DEFAULT_TZ) -> int:
-    """读今天该指标已落库的值（内存里的增量不含在内）。"""
+    """读今天该指标**已落库**的值（不含内存增量；要合并请用 daily_series）。"""
     async with db.get_session() as session:
         row = (
             await session.execute(
@@ -262,26 +484,54 @@ async def metric_today(metric: str, group_id: str = GLOBAL_GROUP, *, tz_name: st
     return int(row.value) if row is not None else 0
 
 
-async def history_totals(
-    group_id: str, *, days: int = 7, tz_name: str = DEFAULT_TZ
-) -> dict[str, int]:
-    """最近 ``days`` 天（不含今天）的汇总：消息 / 入群 / 退群。"""
-    dates = set(recent_dates(days, tz_name=tz_name)) - {today(tz_name)}
-    wanted = (METRIC_MESSAGES, METRIC_JOINS, METRIC_LEAVES)
+
+async def daily_digest(*, tz_name: str = DEFAULT_TZ, date: str | None = None) -> DailyDigest:
+    """收集某天（默认昨天）各群的活跃数据，供日报渲染/推送。
+
+    群列表直接来自 ``stats_daily``：有数据=那天统计是开着的，不用另外维护群名单。
+    """
+    target = str(date) if date else recent_dates(2, tz_name=tz_name)[-1]
     async with db.get_session() as session:
-        rows = (
+        group_ids = (
             await session.execute(
-                select(StatsDaily).where(
-                    StatsDaily.group_id == str(group_id),
-                    StatsDaily.metric.in_(wanted),
-                )
+                select(StatsDaily.group_id)
+                .where(StatsDaily.date == target, StatsDaily.group_id != GLOBAL_GROUP)
+                .distinct()
             )
         ).scalars().all()
-    totals = {metric: 0 for metric in wanted}
-    for row in rows:
-        if row.date in dates:
-            totals[row.metric] = totals.get(row.metric, 0) + int(row.value)
-    return totals
+
+    from src.core import groups  # 局部导入：避免与 groups 模块的导入顺序纠缠
+
+    entries: list[DigestEntry] = []
+    for group_id in group_ids:
+        series = await daily_series(group_id, [target], tz_name=tz_name)
+        stat = series[0] if series else DailyStat(date=target)
+        name = ""
+        row = await groups.get_group(group_id)
+        if row is not None and row.name:
+            name = str(row.name)
+        entries.append(DigestEntry(group_id=str(group_id), group_name=name, stat=stat))
+    entries.sort(key=lambda item: item.stat.messages, reverse=True)
+    return DailyDigest(date=target, entries=tuple(entries))
+
+
+def render_digest(digest: DailyDigest, *, bot_name: str, bot_title: str) -> str:
+    """渲染每日简报；没有任何群数据时返回空串（调用方据此跳过发送）。"""
+    if not digest.entries:
+        return ""
+    lines = ["{0}（{1}）· {2} 群活跃简报".format(bot_name, bot_title, digest.date)]
+    for entry in digest.entries:
+        label = entry.group_name or entry.group_id
+        lines.append(
+            "· {0}：消息 {1:,}｜活跃 {2} 人｜入群 {3}｜退群 {4}".format(
+                label,
+                entry.stat.messages,
+                entry.stat.active_users,
+                entry.stat.joins,
+                entry.stat.leaves,
+            )
+        )
+    return "\n".join(lines)
 
 
 def format_stats(
@@ -290,26 +540,50 @@ def format_stats(
     bot_name: str,
     bot_title: str,
     uptime_text: str,
+    range_label: str = "今天",
+    series: Sequence[DailyStat] | None = None,
     is_admin: bool = False,
     top: list[tuple[str, int]] | None = None,
-    history: dict[str, int] | None = None,
-    history_days: int = 7,
+    errors: int = 0,
 ) -> str:
-    """渲染 /统计 文本（纯函数，便于测试）。"""
-    lines = ["{0}（{1}）· 本群统计（今天）".format(bot_name, bot_title)]
-    lines.append(
-        "· 消息 {0} 条｜活跃 {1} 人".format(
-            data.get(METRIC_MESSAGES, 0), data.get(METRIC_ACTIVE_USERS, 0)
+    """渲染 /统计 文本（纯函数，便于测试）。
+
+    ``data`` 是所选区间的汇总（:func:`summarize``），``series`` 是走势用的逐日数据。
+    """
+    days = list(series or [])
+    lines = ["{0}（{1}）· 本群统计（{2}）".format(bot_name, bot_title, range_label)]
+    if data.get("days", 1) > 1:
+        lines.append(
+            "· 消息 {0:,} 条｜日均 {1:,} 条".format(
+                data.get(METRIC_MESSAGES, 0), data.get("message_avg", 0)
+            )
         )
-    )
+        lines.append(
+            "· 活跃 {0} 人（日均 {1} 人）".format(
+                data.get(METRIC_ACTIVE_USERS, 0), data.get("active_avg", 0)
+            )
+        )
+    else:
+        lines.append(
+            "· 消息 {0:,} 条｜活跃 {1} 人".format(
+                data.get(METRIC_MESSAGES, 0), data.get(METRIC_ACTIVE_USERS, 0)
+            )
+        )
     lines.append("· 入群 {0}｜退群 {1}".format(data.get(METRIC_JOINS, 0), data.get(METRIC_LEAVES, 0)))
-    lines.append("· 已在线 {0}".format(uptime_text))
+    lines.append("· 机器人已在线 {0}".format(uptime_text))
+
+    if days and any(item.messages for item in days):
+        ordered = list(reversed(days))  # 旧 → 新，走势才读得顺
+        lines.append(
+            "· 近 {0} 日：{1}".format(len(ordered), sparkline([item.messages for item in ordered]))
+        )
+        peak = max(ordered, key=lambda item: item.messages)
+        lines.append("· 峰值 {0}（{1:,} 条）".format(peak.date, peak.messages))
+
     if is_admin:
         lines.append(
-            "· 命令 {0} 次｜自动回复 {1} 条｜错误 {2} 次".format(
-                data.get(METRIC_COMMANDS, 0),
-                data.get(METRIC_AUTO_REPLIES, 0),
-                data.get(METRIC_ERRORS, 0),
+            "· 命令 {0:,} 次｜自动回复 {1:,} 条｜错误 {2} 次".format(
+                data.get(METRIC_COMMANDS, 0), data.get(METRIC_AUTO_REPLIES, 0), errors
             )
         )
         if top:
@@ -318,14 +592,4 @@ def format_stats(
                     len(top), "、".join("{0}({1})".format(mask_qq(qq), count) for qq, count in top)
                 )
             )
-        if history:
-            lines.append(
-                "· 近 {0} 天：消息 {1}｜入群 {2}｜退群 {3}".format(
-                    history_days,
-                    history.get(METRIC_MESSAGES, 0),
-                    history.get(METRIC_JOINS, 0),
-                    history.get(METRIC_LEAVES, 0),
-                )
-            )
     return "\n".join(lines)
-

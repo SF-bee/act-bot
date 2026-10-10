@@ -14,6 +14,9 @@
 - [ ] `scripts/smoke_protocol.py` 通过（get_login_info / get_version_info）
 - [ ] 群内发送 `/ping` 收到回复
 - [ ] `/帮助`、`/版本`、`/统计`、`/权限` 正常（英文别名 `/help`、`/version`、`/stats`、`/op` 仍可用）
+- [ ] `/统计`、`/统计 本周`、`/统计 近7天` 显示区间汇总与「近 N 日」走势；管理员额外看到命令/自动回复/错误/Top N
+- [ ] 到 `[stats].digest_at` 后管理员私聊收到昨日群活跃简报（群里没有动静）
+- [ ] 在 `config/config.toml` 加一段 `[[push]]` 并重启；到点收到推送，`/push` 能看到该条，`/push test <名称>` 可立即试发
 - [ ] 断线重连：重启协议端后 bot 自动恢复（观察日志）
 
 ## 交接演练（换届前必做）

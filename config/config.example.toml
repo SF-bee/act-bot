@@ -18,7 +18,7 @@ stats = true          # 活跃统计
 name = "Yulia"
 title = "ACT 动漫社助理"
 # 群友可能的称呼（供后续聊天引擎/唤醒判断；人设名本身自动算一个称呼）
-aliases = ["尤莉娅", "尤莉", "小尤"]
+aliases = ["尤莉娅", "尤莉", "小尤", "群主"]
 
 [welcome]
 # 入群欢迎语（本文件是默认值；群级开关在 groups.features，用 /config welcome on|off）
@@ -41,12 +41,16 @@ escalate_window_seconds = 120
 
 [stats]
 # 统计（内存累加 → 定时落库；单条消息绝不写库）
-# 落库间隔（秒）
+# 落库间隔（秒）；/统计 的今日数字 = 内存增量 + 当日已落库，不会因落库而归零
 flush_seconds = 60
-# /统计 里给管理员看的活跃 Top N（仅内存，不落库）
+# /统计 里给管理员看的活跃 Top N（仅内存，不落库，重启清空）
 top_users = 5
-# 历史回看天数
-history_days = 7
+# /统计 的迷你走势显示多少天
+trend_days = 7
+# /统计 一次最多回看多少天（防止一次拉太久）
+range_max_days = 90
+# 每日群活跃简报（昨天的数据）私聊给管理员的时间（HH:MM）；off 或留空 = 不发
+digest_at = "09:00"
 
 [broadcast]
 # 广播时群与群之间的发送间隔（秒），用于控制频率、降低风控
@@ -103,3 +107,26 @@ sensitive_pinyin = false
 # 内置正则：URL / 域名 / 手机号 / QQ 号
 sensitive_patterns = true
 sensitive_pattern_action = "warn"
+# ── 定时推送 ──────────────────────────────────────────────────────────────
+# 一个功能覆盖「每天/每周固定时刻给群或管理员发消息」：只改本文件即可增删，
+# 不需要改代码。每条推送一段 [[push]]，可重复多段；改完重启业务层生效。
+# 字段：name（必填，唯一）at（必填，HH:MM 或数组）text（必填）
+#       weekdays（可选，缺省每天）targets（可选，缺省 ["admins"]）
+#       feature（可选，仅群开启该功能时才发）enabled（可选，缺省 true）
+# 占位符：{bot_name} {bot_title} {date} {time} {weekday}
+# 查看/试发：/push、/push test <名称>
+#
+# [[push]]
+# name = "早报"
+# at = "08:00"
+# weekdays = ["mon", "wed", "fri"]   # 不写 = 每天；可用 mon..sun 或 周一..周日
+# targets = ["all"]                  # "all"=全部已登记群；"admins"=私聊管理员；或写群号
+# text = "{bot_name}：早上好，今天是 {date}（{weekday}）～"
+#
+# [[push]]
+# name = "值班提醒"
+# at = ["08:00", "20:00"]
+# targets = ["admins", "123456789"]
+# text = "【值班】{date} {time} 请负责人留意群消息。"
+# feature = "stats"
+

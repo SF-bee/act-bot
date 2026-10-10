@@ -8,12 +8,15 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from sqlalchemy import select
 
 from src.core import db
 from src.core.db import utc_now
 from src.models.tables import Group
+
+logger = logging.getLogger("actbot.groups")
 
 FEATURE_WELCOME = "welcome"
 
@@ -36,6 +39,66 @@ async def get_group(group_id: str | int) -> Group | None:
         return (
             await session.execute(select(Group).where(Group.group_id == gid))
         ).scalar_one_or_none()
+
+
+async def list_groups(*, active_only: bool = True) -> list[Group]:
+    """全部已登记的群（默认只含 active=1）；按群号升序。"""
+    async with db.get_session() as session:
+        query = select(Group)
+        if active_only:
+            query = query.where(Group.active == 1)
+        rows = (await session.execute(query.order_by(Group.group_id))).scalars().all()
+        return list(rows)
+
+
+async def group_ids(*, active_only: bool = True) -> list[str]:
+    """已登记群的群号列表（用于群发/遍历）。"""
+    return [str(row.group_id) for row in await list_groups(active_only=active_only)]
+
+
+async def upsert_group(group_id: str | int, name: str = "", *, active: bool = True) -> None:
+    """登记 / 更新一个群；已登记群的 features 保持不变。"""
+    gid = str(group_id)
+    async with db.get_session() as session:
+        row = (
+            await session.execute(select(Group).where(Group.group_id == gid))
+        ).scalar_one_or_none()
+        if row is None:
+            session.add(
+                Group(
+                    group_id=gid,
+                    name=name or "",
+                    active=1 if active else 0,
+                    created_at=utc_now(),
+                )
+            )
+        else:
+            if name and row.name != name:
+                row.name = name
+            row.active = 1 if active else 0
+        await session.commit()
+
+
+async def sync_groups(entries) -> int:
+    """按协议端返回的群列表登记群名册；返回登记的群数。"""
+    count = 0
+    for entry in entries or []:
+        gid = str(entry.get("group_id", "")).strip()
+        if not gid:
+            continue
+        await upsert_group(gid, str(entry.get("group_name", "") or ""))
+        count += 1
+    return count
+
+
+async def sync_from_bot(bot) -> int:
+    """机器人连上协议端时同步群列表；失败只记日志，返回 0。"""
+    try:
+        entries = await bot.get_group_list()
+    except Exception:  # noqa: BLE001 - 同步失败不影响机器人运行
+        logger.warning("获取群列表失败，群名册跳过本次同步", exc_info=True)
+        return 0
+    return await sync_groups(entries)
 
 
 async def feature_enabled(group_id: str | int, feature: str, *, default: bool = True) -> bool:

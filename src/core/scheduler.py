@@ -1,6 +1,11 @@
 """定时任务（APScheduler）：跨平台，不依赖系统 cron / 计划任务。
 
-P0 只注册"每日备份"；后续功能（社活提醒等）在此扩展。
+目前注册四类任务：
+- 每日备份（backup.daily_at）；
+- 统计落库（每 stats.flush_seconds 秒，把内存增量写库）；
+- 每日群活跃简报（stats.digest_at，私聊管理员，不打扰群成员）；
+- 定时推送（config.toml 的 [[push]]，由 :mod:`src.core.push` 解析并注册，
+  改配置即可增删，不需要改代码）。
 """
 from __future__ import annotations
 
@@ -11,7 +16,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from . import backup
+from . import backup, push
 from .config import get_settings, parse_hhmm
 
 logger = logging.getLogger("actbot.scheduler")
@@ -74,6 +79,37 @@ def setup_and_start() -> None:
             id="stats-flush",
             replace_existing=True,
         )
+
+        if settings.stats_digest_at:
+            digest_hour, digest_minute = parse_hhmm(settings.stats_digest_at)
+
+            async def _daily_stats_digest() -> None:
+                """把昨天的群活跃简报私聊给管理员（只在私聊，不打扰群成员）。"""
+                try:
+                    from src.core import notify, persona, stats
+
+                    digest = await stats.daily_digest(tz_name=settings.timezone)
+                    text = stats.render_digest(
+                        digest, bot_name=persona.name(), bot_title=persona.title()
+                    )
+                    if not text:
+                        logger.info("统计日报：%s 没有群数据，跳过", digest.date)
+                        return
+                    sent = await notify.notify_admins(text)
+                    logger.info("统计日报已发送：%d 条私聊（%s）", sent, digest.date)
+                except Exception:  # noqa: BLE001 - 日报失败不影响机器人运行
+                    logger.exception("统计日报发送失败")
+
+            scheduler.add_job(
+                _daily_stats_digest,
+                CronTrigger(hour=digest_hour, minute=digest_minute),
+                id="stats-digest",
+                replace_existing=True,
+            )
+    registered = push.register_jobs(scheduler, settings)
+    if registered:
+        logger.info("已注册 %d 个定时推送（config.toml 的 [[push]]）", registered)
+
     scheduler.start()
     _scheduler = scheduler
     logger.info("调度器已启动：每日备份 %02d:%02d（%s）", hour, minute, settings.timezone)

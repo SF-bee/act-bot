@@ -40,7 +40,8 @@ uv run python scripts/smoke_fake.py
 | 入群欢迎 | 有人入群（`notice.group_increase`） | 自动 @ 新人 + 欢迎语；两级开关：全局 `[features].welcome`（config.toml）、群级「群内 `/config welcome on|off`」（`/welcome` 只读，看状态与预览）；文案在 `[welcome].text`，支持占位符 `{nickname}` / `{group_name}` / `{user_id}`；同一人 60 秒内重复事件只欢迎一次 |
 | 聊天互动 | `@` 机器人，或消息里含关键词 | **确定性机制，不接 AI**：被 @ 必回且随连续被叫分档（mention → mention_more → mention_tired）；关键词按 `[chat].reply_probability` 概率回；同人同群 `[chat].cooldown_seconds` 内不打扰；规则存 `chat_rules` 表，用 `/chat add` / `/chat list` / `/chat del` 维护（群级规则覆盖全局，`-g` 写全局默认）；开关走 `/config chat on|off` |
 | 群管理 · 风控 | 违规消息 / `/mod` 等命令 | 内置 6.2 万词库（已排除政治类）+ 自定义规则，命中自动**撤回+警告**、刷屏禁言、复读/@全体可配；`/mod` 管理规则、`/warn` `/mute` `/unmute` `/kick` `/recall` 手动处置；**支持私聊管理**（`/use` 绑定默认群或 `-g` 单次指定，`-s` 静默只审计）；开关走 `/config moderation on|off` |
-| 活跃统计 | `/统计`（别名 `/stats`） | 消息数 / 活跃人数 / 入群退群 / 在线时长，**成员与管理员看到的内容不同**（管理员多看命令数、自动回复数、错误数、今日活跃 Top N、近 N 天汇总）；内存累加 + 定时落库（`[stats].flush_seconds`），**不存消息正文、不落库每人发言数**；开关走 `/config stats on|off` |
+| 活跃统计 | `/统计`（别名 `/stats`） | 支持时间区间：`今天` / `昨天` / `本周` / `上周` / `本月` / `近N天`，附「近 N 日」迷你走势与峰值日；**成员与管理员看到的内容不同**（管理员多看命令数、自动回复数、错误数、今日活跃 Top N）；每天 `[stats].digest_at` 把昨日各群简报**私聊给管理员**（不打扰群）；内存累加 + 定时落库（`[stats].flush_seconds`），**不存消息正文、不落库每人发言数**；开关走 `/config stats on|off` |
+| 定时推送 | 到点自动发（配置驱动） | 在 `config/config.toml` 写 `[[push]]` 段落即可增删：每天/每周固定时刻，发给全部群 / 指定群 / 私聊管理员；支持 `{date}` 等占位符与群级功能过滤；`/push` 查看、`/push test <名称>` 试发；详见 `docs/scheduler.md` |
 | 权限查看 | `/权限`（别名 `/op`） | 查看自己的角色与管理员名单 |
 | 群功能开关 | `/config`、`/config <功能> on|off` | 管理员可按群开关功能（写 `groups.features`）；功能名册见 `src/core/features.py`，新增功能不用改命令 |
 | 管理操作审计 | `/audit [n]` | 谁在哪个群做了什么（改配置等），管理员可查；写入见 `src/core/audit.py` |
@@ -131,7 +132,7 @@ act-bot/
 ├─ bot.py            # 启动入口
 ├─ src/              # 业务代码（跨平台）
 │  ├─ bot.py         # 启动逻辑
-│  ├─ core/          # config / db / permissions / backup / scheduler
+│  ├─ core/          # config / db / permissions / backup / scheduler / push / notify
 │  ├─ models/        # 数据模型
 │  └─ plugins/       # 功能插件
 ├─ scripts/          # 运维脚本（全部 Python，跨平台）
@@ -146,6 +147,7 @@ act-bot/
 - 设计基线：`docs/design.md`
 - 命令约定与清单：`docs/commands.md`
 - 群管理 · 风控：`docs/moderation.md`
+- 定时任务与定时推送：`docs/scheduler.md`
 - OneBot 接口契约：`docs/onebot-contract.md`
 - 平台差异备忘（必读）：`docs/platform-notes.md`
 - 部署：`docs/deploy.md`（总览）｜ `docs/deploy-ubuntu.md` ｜ `docs/deploy-windows.md` ｜ `docs/deploy-macos-dev.md`
