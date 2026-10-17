@@ -1,6 +1,9 @@
 """统计测试：计数口径、命令识别、区间解析、落库合并、走势、日报、隐私打码。"""
 from __future__ import annotations
 
+import asyncio
+import contextlib
+
 import pytest
 
 from src.core import config, stats
@@ -166,6 +169,77 @@ async def test_errors_are_global_and_reset_on_flush(fresh_db):
     await stats.flush(tz_name=tz)
     assert stats.pending_errors() == 0
     assert await stats.errors_total([stats.today(tz)], tz_name=tz) == 2
+
+
+class _StubResult:
+    def scalar_one_or_none(self):
+        return None
+
+
+class _StubSession:
+    """假 session：execute 恒返回空行，commit 可注入失败。"""
+
+    def __init__(self, *, fail: bool) -> None:
+        self.fail = fail
+
+    async def execute(self, *_args, **_kwargs):
+        return _StubResult()
+
+    def add(self, _obj) -> None:
+        return None
+
+    async def commit(self) -> None:
+        if self.fail:
+            raise RuntimeError("disk full")
+
+
+def _patch_failing_session(monkeypatch) -> None:
+    @contextlib.asynccontextmanager
+    async def fake_session():
+        yield _StubSession(fail=True)
+
+    monkeypatch.setattr(stats.db, "get_session", fake_session)
+
+
+async def test_flush_failure_keeps_pending(fresh_db, monkeypatch):
+    """回归：commit 失败时不能先把 pending / errors 清空（否则统计静默丢失）。"""
+    tz = "Asia/Shanghai"
+    stats.record_message("100", "1", "hi", tz_name=tz)
+    stats.record_error()
+    _patch_failing_session(monkeypatch)
+    with pytest.raises(RuntimeError):
+        await stats.flush(tz_name=tz)
+
+    assert stats.pending_errors() == 1, "错误计数要留着等下次落库"
+    assert stats.pending_counts()["pending"] >= 1
+    assert stats.pending_counts()["errors"] == 1
+
+    monkeypatch.undo()  # 读路径要用真 session
+    stat = (await stats.daily_series("100", [stats.today(tz)], tz_name=tz))[0]
+    assert stat.messages == 1, "内存增量还在，读路径（合并内存）不受影响"
+
+
+async def test_flush_retry_writes_once(fresh_db, monkeypatch):
+    """失败后重试：只写一次，不能重复累加。"""
+    tz = "Asia/Shanghai"
+    stats.record_message("100", "1", "hi", tz_name=tz)
+    _patch_failing_session(monkeypatch)
+    with pytest.raises(RuntimeError):
+        await stats.flush(tz_name=tz)
+
+    monkeypatch.undo()
+    await stats.flush(tz_name=tz)
+    assert await stats.metric_today(stats.METRIC_MESSAGES, "100", tz_name=tz) == 1
+    assert stats.pending_counts() == {"pending": 0, "errors": 0, "groups": 0}
+
+
+async def test_concurrent_flush_does_not_double_write(fresh_db):
+    """调度器 flush 与退出 flush 并发时必须串行化（否则同一增量写两次）。"""
+    tz = "Asia/Shanghai"
+    for _ in range(5):
+        stats.record_message("100", "1", "hi", tz_name=tz)
+    await asyncio.gather(stats.flush(tz_name=tz), stats.flush(tz_name=tz))
+    assert await stats.metric_today(stats.METRIC_MESSAGES, "100", tz_name=tz) == 5
 
 
 async def test_daily_series_reads_history(fresh_db):

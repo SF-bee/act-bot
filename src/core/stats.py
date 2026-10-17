@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -124,6 +125,16 @@ _buckets: dict[tuple[str, str], _Bucket] = {}
 _started_at = time.monotonic()
 _last_flush_at = time.monotonic()
 _errors = 0
+# flush 的进程内互斥：调度器定时 flush 与退出 flush 可能同时在跑
+_flush_lock: asyncio.Lock | None = None
+
+
+def _lock() -> asyncio.Lock:
+    """取 flush 互斥锁（首次使用时创建）。"""
+    global _flush_lock
+    if _flush_lock is None:
+        _flush_lock = asyncio.Lock()
+    return _flush_lock
 
 
 def _tz(tz_name: str) -> timezone | ZoneInfo:
@@ -221,10 +232,11 @@ def mask_qq(qq: str) -> str:
 
 def reset_state() -> None:
     """清空内存状态（测试用）。"""
-    global _errors, _last_flush_at
+    global _errors, _flush_lock, _last_flush_at
     _buckets.clear()
     _errors = 0
     _last_flush_at = time.monotonic()
+    _flush_lock = None
 
 
 def _enabled() -> bool:
@@ -328,6 +340,13 @@ def pending_errors() -> int:
     return int(_errors)
 
 
+def pending_counts() -> dict[str, int]:
+    """尚未落库的增量概览（退出流程与排障用；不包含已落库的历史）。"""
+    pending = sum(int(value) for bucket in _buckets.values() for value in bucket.pending.values())
+    groups = sum(1 for bucket in _buckets.values() if bucket.pending)
+    return {"pending": pending, "errors": int(_errors), "groups": groups}
+
+
 def _merge_memory(group_id: str, table: dict[str, dict[str, int]], *, tz_name: str) -> None:
     """把今天尚未落库的内存增量叠加到 ``table``（就地修改）。"""
     current = today(tz_name)
@@ -420,53 +439,74 @@ async def errors_total(
 
 
 async def flush(*, tz_name: str = DEFAULT_TZ) -> int:
-    """把内存增量写进 ``stats_daily``（累加型 +，快照型取 max）。返回写入行数。"""
+    """把内存增量写进 ``stats_daily``（累加型 +，快照型取 max）。返回写入行数。
+
+    事务语义：**先取内存快照 → 写库 → commit 成功后才按快照量扣减内存**。
+    commit 失败时 pending / _errors / _last_flush_at 一律不动，下次 flush 重试；
+    等待与写库期间新记下的增量留在内存里，不会被这一轮顺手清空。
+    """
     global _last_flush_at, _errors
     if not _enabled():
         return 0
-    moment = time.monotonic()
-    online_delta = int(max(0.0, moment - _last_flush_at))
-    _last_flush_at = moment
+    async with _lock():
+        moment = time.monotonic()
+        online_delta = int(max(0.0, moment - _last_flush_at))
 
-    additions: list[tuple[str, str, str, int]] = []
-    snapshots: list[tuple[str, str, str, int]] = []
-    for (group_id, date), bucket in list(_buckets.items()):
-        for metric, value in bucket.pending.items():
-            if value:
-                additions.append((group_id, date, metric, int(value)))
-        bucket.pending.clear()
-        if bucket.users:
-            snapshots.append((group_id, date, METRIC_ACTIVE_USERS, len(bucket.users)))
-    if online_delta:
-        additions.append((GLOBAL_GROUP, today(tz_name), METRIC_ONLINE_SECONDS, online_delta))
-    if _errors:
-        additions.append((GLOBAL_GROUP, today(tz_name), METRIC_ERRORS, int(_errors)))
-        _errors = 0
-    if not additions and not snapshots:
-        return 0
+        additions: list[tuple[str, str, str, int]] = []
+        snapshots: list[tuple[str, str, str, int]] = []
+        taken: list[tuple[_Bucket, dict[str, int]]] = []
+        for (group_id, date), bucket in list(_buckets.items()):
+            pending = {metric: int(value) for metric, value in bucket.pending.items() if value}
+            for metric, value in pending.items():
+                additions.append((group_id, date, metric, value))
+            if pending:
+                taken.append((bucket, pending))  # 记对象引用：await 期间桶可能被 reset 掉
+            if bucket.users:
+                snapshots.append((group_id, date, METRIC_ACTIVE_USERS, len(bucket.users)))
+        if online_delta:
+            additions.append((GLOBAL_GROUP, today(tz_name), METRIC_ONLINE_SECONDS, online_delta))
+        errors_taken = int(_errors)
+        if errors_taken:
+            additions.append((GLOBAL_GROUP, today(tz_name), METRIC_ERRORS, errors_taken))
+        if not additions and not snapshots:
+            _last_flush_at = moment
+            return 0
 
-    async with db.get_session() as session:
-        for group_id, date, metric, value in additions + snapshots:
-            row = (
-                await session.execute(
-                    select(StatsDaily).where(
-                        StatsDaily.group_id == group_id,
-                        StatsDaily.date == date,
-                        StatsDaily.metric == metric,
+        async with db.get_session() as session:
+            for group_id, date, metric, value in additions + snapshots:
+                row = (
+                    await session.execute(
+                        select(StatsDaily).where(
+                            StatsDaily.group_id == group_id,
+                            StatsDaily.date == date,
+                            StatsDaily.metric == metric,
+                        )
                     )
-                )
-            ).scalar_one_or_none()
-            if row is None:
-                session.add(StatsDaily(group_id=group_id, date=date, metric=metric, value=value))
-            elif metric in SNAPSHOT_METRICS:
-                # 当日去重人数只增不减：max 避免重启后内存集合变小把数值改小
-                row.value = max(int(row.value), value)
-            else:
-                row.value = int(row.value) + value
-        await session.commit()
-    written = len(additions) + len(snapshots)
-    logger.debug("统计落库：%d 行", written)
-    return written
+                ).scalar_one_or_none()
+                if row is None:
+                    session.add(
+                        StatsDaily(group_id=group_id, date=date, metric=metric, value=value)
+                    )
+                elif metric in SNAPSHOT_METRICS:
+                    # 当日去重人数只增不减：max 避免重启后内存集合变小把数值改小
+                    row.value = max(int(row.value), value)
+                else:
+                    row.value = int(row.value) + value
+            await session.commit()
+
+        # commit 成功了才扣减：按快照量减，等待期间新记的增量留在 pending 里
+        for bucket, pending in taken:
+            for metric, value in pending.items():
+                left = int(bucket.pending.get(metric, 0)) - value
+                if left > 0:
+                    bucket.pending[metric] = left
+                else:
+                    bucket.pending.pop(metric, None)
+        _errors -= errors_taken
+        _last_flush_at = moment
+        written = len(additions) + len(snapshots)
+        logger.debug("统计落库：%d 行", written)
+        return written
 
 
 async def metric_today(metric: str, group_id: str = GLOBAL_GROUP, *, tz_name: str = DEFAULT_TZ) -> int:

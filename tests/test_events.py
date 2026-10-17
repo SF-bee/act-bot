@@ -201,6 +201,43 @@ async def test_cooldown_is_per_group_and_user():
     assert called == ["300", "301", "300"]
 
 
+async def test_failed_handler_does_not_consume_cooldown():
+    """回归：handler 抛异常时不能把 cooldown 也吃掉（否则失败事件永远等不到重试）。"""
+    attempts: list[str] = []
+
+    @subscribe(GroupMemberJoin, cooldown=60, name="flaky")
+    async def _flaky(event: GroupMemberJoin, bot) -> None:
+        attempts.append(event.user_id)
+        if len(attempts) == 1:
+            raise RuntimeError("发送失败")
+
+    first = await dispatch(_join(), now=100.0)
+    retry = await dispatch(_join(), now=101.0)
+
+    assert (first.delivered, first.failed) == (0, 1)
+    assert (retry.delivered, retry.cooled) == (1, 0)
+    assert attempts == ["300", "300"]
+
+
+def test_cooldown_rollback_restores_previous_stamp():
+    """回滚语义是「恢复旧时间戳」而不是删键（删键会把窗口整体重置）。"""
+    sub = events.Subscription(
+        event_type=GroupMemberJoin, handler=lambda event, bot: None, cooldown=60, name="stamp"
+    )
+    event = _join()
+
+    key, previous = events._cooldown_reserve(sub, event, 100.0)
+    assert key is not None and previous is events._NO_PREVIOUS
+    assert events._cooldown_seen[key] == 100.0
+
+    events._cooldown_reserve(sub, event, 130.0)
+    events._cooldown_rollback(key, 100.0)
+    assert events._cooldown_seen[key] == 100.0, "回滚应恢复到旧时间戳"
+
+    events._cooldown_rollback(key, events._NO_PREVIOUS)
+    assert key not in events._cooldown_seen, "没有旧时间戳时删键，允许立即重试"
+
+
 async def test_consumer_failure_is_isolated():
     seen: list[str] = []
 

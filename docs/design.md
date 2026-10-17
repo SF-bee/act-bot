@@ -79,11 +79,11 @@ act-bot/
 ├─ .gitignore
 ├─ src/
 │  ├─ bot.py                     # 启动入口（跨平台）
-│  ├─ core/                      # config / db / permissions / scheduler / push / notify / uplink / backup / paths
+│  ├─ core/                      # config / db / permissions / scheduler / push / notify / uplink / checkin / backup / paths
 │  ├─ models/
 │  └─ plugins/                   # 每功能一个目录
-│     ├─ help/ about/ departments/ welcome/ events/
-│     ├─ signups/ broadcast/ archive/ group_admin/
+│     ├─ help/ system/ admin/ welcome/ events/ console/ chat/
+│     ├─ stats/ moderation/ push/ uplink/ checkin/
 ├─ config/                       # config.example.toml + README
 ├─ data/                         # ★ 运行数据（.gitignore；可经 DATA_DIR 外置）
 │  ├─ act.db  ├─ uploads/  └─ backups/
@@ -121,6 +121,7 @@ act-bot/
 | `archive_items` | 历届作品/资料 | title、category、year、authors、file_path/url、tags |
 | `settings` | 运行时可改配置 | key、value(JSON)、updated_by |
 | `audit_log` | 审计 | qq、action、detail、created_at |
+| `checkins` | 群互动 · 签到 | group_id、user_id、date（三列复合主键）、display_name、created_at |
 
 注意：WAL 模式；DB 不放网络盘/同步盘；备份用 `.backup` API。
 
@@ -132,7 +133,13 @@ act-bot/
 | 业务层 | `config/config.toml` | 功能开关、命令前缀、欢迎语默认值、广播限速 | ✗（.example 入库） |
 | 运行层 | 数据库 | 管理员、群开关、部门、活动、资料 | 随 data/ 迁移 |
 
-**管理员权限（不写死 QQ）**：owner/admin 两级存 `admins` 表；命令管理（`/权限 添加|移除|转让`）；冷启动 `bootstrap_admin.py`；离线兜底 `manage.py`。
+**管理员权限（不写死 QQ）**：owner/admin 两级存 `admins` 表，**owner 全库唯一**（迁移
+`008_single_owner.sql` 的部分唯一索引兜底）；群内 `/权限` 只读（查看自己的角色与名单），
+增删用离线脚本 `manage.py admins add|remove`、换届用 `manage.py admins transfer`（或
+`transfer_owner()` 先降后升）；冷启动 `bootstrap_admin.py`（已有 owner 时拒绝再建）。
+
+**日志不落消息正文**：聊天/欢迎等路径只记录长度与 sha256 指纹（`src/core/logsafe.py`），
+日志可以长期保留，不构成「保存消息正文」。
 
 ## 7. 部署方案总览
 

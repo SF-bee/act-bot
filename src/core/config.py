@@ -41,6 +41,17 @@ _DEFAULT_MODERATION_WARN_TEXT = (
 )
 _DEFAULT_MODERATION_ACTIONS = ("warn", "recall_only", "mute", "kick")
 
+# 群互动 · 签到默认文案（占位符见 src/core/checkin.py）
+_DEFAULT_CHECKIN_DAILY_TEXT = (
+    "{nickname} 签到成功！连续 {streak} 天，累计 {total} 次，今天第 {rank} 个到～"
+)
+_DEFAULT_CHECKIN_REPEAT_TEXT = (
+    "{nickname} 今天已经签过啦，明天再来～（连续 {streak} 天 / 累计 {total} 次）"
+)
+_DEFAULT_CHECKIN_MILESTONE_TEXT = (
+    "{nickname} 连续签到 {milestone} 天！累计 {total} 次，厉害～"
+)
+
 
 @dataclass(frozen=True)
 class PushSchedule:
@@ -75,10 +86,17 @@ class AppSettings:
     chat_escalate_after: int = 3
     chat_escalate_window_seconds: float = 120.0
     stats_flush_seconds: float = 60.0
+    stats_flush_timeout: float = 10.0
     stats_top_users: int = 5
     stats_trend_days: int = 7
     stats_range_max_days: int = 90
     stats_digest_at: str = "09:00"
+    # 群互动 · 签到（[checkin]；全局开关在 [features].checkin，见 src/core/checkin.py）
+    checkin_daily_text: str = _DEFAULT_CHECKIN_DAILY_TEXT
+    checkin_repeat_text: str = _DEFAULT_CHECKIN_REPEAT_TEXT
+    checkin_milestone_text: str = _DEFAULT_CHECKIN_MILESTONE_TEXT
+    checkin_rank_size: int = 10
+    checkin_rank_scope: str = "month"
     backup_daily_at: str = "03:00"
     backup_keep_daily_days: int = 30
     backup_keep_monthly: int = 6
@@ -311,6 +329,9 @@ def load_settings(
     for key, value in user_features.items():
         if not isinstance(value, bool):
             raise ConfigError(f"功能开关 {key!r} 应为 true / false")
+        if feature_get(key) is None:  # 拼错的开关以前会静默失效，这里直接拒绝
+            known = "、".join(feature_names())
+            raise ConfigError(f"未知功能开关 {key!r}；可用开关：{known}")
         features[key] = value
 
     persona = raw.get("persona", {})
@@ -371,6 +392,13 @@ def load_settings(
     stats_flush = stats_cfg.get("flush_seconds", 60)
     if isinstance(stats_flush, bool) or not isinstance(stats_flush, (int, float)) or stats_flush <= 0:
         raise ConfigError("[stats].flush_seconds 应为正数")
+    stats_flush_timeout = stats_cfg.get("flush_timeout_seconds", 10.0)
+    if (
+        isinstance(stats_flush_timeout, bool)
+        or not isinstance(stats_flush_timeout, (int, float))
+        or stats_flush_timeout <= 0
+    ):
+        raise ConfigError("[stats].flush_timeout_seconds 应为正数")
     stats_top = stats_cfg.get("top_users", 5)
     if isinstance(stats_top, bool) or not isinstance(stats_top, int) or stats_top < 0:
         raise ConfigError("[stats].top_users 应为非负整数")
@@ -386,6 +414,30 @@ def load_settings(
         stats_digest_at = ""
     elif stats_digest_at:
         parse_hhmm(stats_digest_at)
+
+    checkin = raw.get("checkin", {})
+    if not isinstance(checkin, dict):
+        raise ConfigError("[checkin] 段落格式错误：应为键值对")
+    checkin_daily_text = checkin.get("daily_text", _DEFAULT_CHECKIN_DAILY_TEXT)
+    checkin_repeat_text = checkin.get("repeat_text", _DEFAULT_CHECKIN_REPEAT_TEXT)
+    checkin_milestone_text = checkin.get("milestone_text", _DEFAULT_CHECKIN_MILESTONE_TEXT)
+    for label, value in (
+        ("daily_text", checkin_daily_text),
+        ("repeat_text", checkin_repeat_text),
+        ("milestone_text", checkin_milestone_text),
+    ):
+        if not isinstance(value, str) or not value.strip():
+            raise ConfigError(f"[checkin].{label} 应为非空字符串")
+    checkin_rank_size = checkin.get("rank_size", 10)
+    if (
+        isinstance(checkin_rank_size, bool)
+        or not isinstance(checkin_rank_size, int)
+        or not 1 <= checkin_rank_size <= 50
+    ):
+        raise ConfigError("[checkin].rank_size 应为 1-50 的整数")
+    checkin_rank_scope = str(checkin.get("rank_scope", "month")).strip().lower()
+    if checkin_rank_scope not in ("month", "all"):
+        raise ConfigError('[checkin].rank_scope 只能是 "month" 或 "all"')
 
     backup = raw.get("backup", {})
     daily_at = str(backup.get("daily_at", "03:00"))
@@ -470,10 +522,16 @@ def load_settings(
         chat_escalate_after=int(chat_escalate),
         chat_escalate_window_seconds=float(chat_window),
         stats_flush_seconds=float(stats_flush),
+        stats_flush_timeout=float(stats_flush_timeout),
         stats_top_users=int(stats_top),
         stats_trend_days=int(stats_trend),
         stats_range_max_days=int(stats_range_max),
         stats_digest_at=stats_digest_at,
+        checkin_daily_text=checkin_daily_text,
+        checkin_repeat_text=checkin_repeat_text,
+        checkin_milestone_text=checkin_milestone_text,
+        checkin_rank_size=int(checkin_rank_size),
+        checkin_rank_scope=checkin_rank_scope,
         backup_daily_at=daily_at,
         backup_keep_daily_days=int(keep_daily),
         backup_keep_monthly=int(keep_monthly),

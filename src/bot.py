@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import nonebot
@@ -29,6 +30,34 @@ def _setup_project_logging(level: str) -> None:
             logging.Formatter("%(asctime)s [%(levelname)s] %(name)s | %(message)s", datefmt="%m-%d %H:%M:%S")
         )
         project.addHandler(handler)
+
+
+def _log_pending_stats(*, failed: bool) -> None:
+    """退出落库没成功时，把未落库的数量写进日志（数据会丢，至少留下证据）。"""
+    from src.core import stats
+
+    pending = stats.pending_counts()
+    logger.log(
+        logging.ERROR if failed else logging.WARNING,
+        "退出时统计未落库：pending=%d errors=%d groups=%d（进程退出后丢失）",
+        pending["pending"],
+        pending["errors"],
+        pending["groups"],
+    )
+
+
+async def flush_stats_on_shutdown(*, timeout: float) -> None:
+    """退出前把统计内存里的增量落库（超时/失败只记日志，不阻塞退出）。"""
+    from src.core import stats
+
+    try:
+        await asyncio.wait_for(stats.flush(), timeout=float(timeout))
+    except asyncio.TimeoutError:
+        logger.warning("退出时统计落库超时（%.1fs）", float(timeout))
+        _log_pending_stats(failed=False)
+    except Exception:  # noqa: BLE001 - 退出流程不应因为统计失败而中断
+        logger.exception("退出时统计落库失败")
+        _log_pending_stats(failed=True)
 
 
 def main() -> None:
@@ -70,13 +99,11 @@ def main() -> None:
 
     @driver.on_shutdown
     async def _on_shutdown() -> None:
-        from src.core import db, scheduler, stats
+        from src.core import db, scheduler
+        from src.core.config import get_settings
 
         scheduler.shutdown()
-        try:  # 退出前把统计内存里的增量落库（尽力而为）
-            await stats.flush()
-        except Exception:  # noqa: BLE001 - 退出流程不应因为统计失败而中断
-            logger.exception("退出时统计落库失败")
+        await flush_stats_on_shutdown(timeout=get_settings().stats_flush_timeout)
         await db.dispose_engine()
 
     nonebot.load_from_toml("pyproject.toml")

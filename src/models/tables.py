@@ -191,3 +191,16 @@ class ModerationRule(Base):
     note: Mapped[str] = mapped_column(String, default="")
     created_by: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[str] = mapped_column(String, default="")
+
+
+class Checkin(Base):
+    """群签到（迁移 007）：一人一天一条，复合主键天然防重复。"""
+
+    __tablename__ = "checkins"
+
+    group_id: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    user_id: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    date: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    # 签到当时的群昵称快照（榜单直接用；空则打码 QQ）
+    display_name: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[str] = mapped_column(String, default="")

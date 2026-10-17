@@ -68,7 +68,7 @@ uv run python scripts/smoke_protocol.py --url ws://127.0.0.1:3001
 
 - **`docker build` 拉不到基础镜像 / `failed to resolve ... registry-1.docker.io: EOF`**：
   属网络问题（非仓库问题）。给 Docker 配置镜像加速器，或在能访问的机器上预拉
-  `python:3.13-slim` 与 `ghcr.io/astral-sh/uv:latest` 后再构建。
+  `python:3.13-slim` 与 `ghcr.io/astral-sh/uv:0.11.22`（Dockerfile 里钉死的版本）后再构建。
   > 本机（开发 Mac）实测：Docker Hub 拉取较慢但可用；`act-bot:local` 已构建成功（459 MB），`docker compose config` 校验通过。
 - **快速登录失效、容器改要扫码**：`bash deploy/docker/fetch-qr.sh` —— 把容器里的二维码导出并放大成可扫图（产物在 `runtime/qr/`，不入库），手机扫码即可。
 - **每次重建容器都要重新扫码**：`NAPCAT_QQ` 没设（= 镜像 entrypoint 收不到 `ACCOUNT`，不会执行 `qq -q`），或 `runtime/ntqq` 数据目录被清掉；

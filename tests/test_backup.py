@@ -47,3 +47,19 @@ def test_rotate_backups(temp_data_dir):
     assert "act-20261030-010000.db" in remaining  # 月度保留
     assert "act-20261001-010000.db" not in remaining
     assert len(removed) == 32
+
+def test_rotate_keeps_latest_per_day_not_latest_n_files(temp_data_dir):
+    from src.core import backup
+
+    dest = temp_data_dir / "backups"
+    dest.mkdir(parents=True, exist_ok=True)
+    # 同一天三次备份（应按自然日只留最新一份）
+    for hhmmss in ("010000", "120000", "230000"):
+        (dest / f"act-20261110-{hhmmss}.db").write_bytes(b"x")
+    for day in range(1, 10):
+        (dest / f"act-202611{day:02d}-010000.db").write_bytes(b"x")
+
+    backup.rotate_backups(dest, keep_daily_days=1, keep_monthly=0)
+    remaining = sorted(p.name for p in dest.glob("act-*.db"))
+
+    assert remaining == ["act-20261110-230000.db"]  # 最近那个自然日的最新一份

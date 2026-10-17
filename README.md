@@ -35,6 +35,7 @@ QQ 群成员
 | 入群欢迎 | 群成员加入 | 自动 @ 新人并发送可配置欢迎语，支持全局和群级开关 |
 | 聊天互动 | @ 机器人或命中关键词 | 支持概率回复、冷却、连续 @ 分档和群级规则；默认关闭 |
 | 活跃统计 | `/统计` | 支持今天、昨天、本周、上周、本月、近 N 天和趋势；管理员可看额外指标 |
+| 群互动 · 签到 | `/签到`、`/签到榜` | 成员每日打卡，记录连续天数与累计次数；支持本月/累计排行榜；默认关闭 |
 | 群管理与风控 | 自动规则、`/mod`、`/warn`、`/mute` 等 | 敏感词、URL/号码模式、刷屏、复读、@全体；支持撤回、警告、禁言、踢出和灰度模式 |
 | 定时推送 | `config/config.toml` 的 `[[push]]` | 按天/周推送到群或管理员，可试发 |
 | 掉线提醒 | 协议端重新上线 | 汇总掉线时刻、在线时长和离线时长后私聊管理员 |
@@ -155,6 +156,8 @@ uv run python scripts/smoke_protocol.py --url ws://... --token ...
 | --- | --- |
 | `/帮助` / `/help` | 查看可用命令 |
 | `/统计` / `/stats` | 查看本群活跃统计 |
+| `/签到` / `/checkin` | 群内打卡，查看连续天数与累计次数 |
+| `/签到榜` / `/checkin_rank` | 查看本群签到排行（本月/累计） |
 | `/版本` / `/version` | 查看版本和功能状态 |
 | `/权限` / `/op` | 查看自己的角色和管理员名单 |
 | `/ping` | 检查连通性 |
@@ -180,11 +183,12 @@ uv run python scripts/smoke_protocol.py --url ws://... --token ...
 
 常用业务配置位于 [`config/config.example.toml`](config/config.example.toml)：
 
-- `[features]`：全局功能开关（`welcome`、`chat`、`stats`、`moderation`）
+- `[features]`：全局功能开关（`welcome`、`chat`、`stats`、`moderation`、`checkin`）
 - `[persona]`：机器人名称、身份和称呼
 - `[welcome]`：欢迎语与是否 @ 新人
 - `[chat]`：回复概率、冷却和连续 @ 行为
 - `[stats]`：落库间隔、趋势天数、管理员日报
+- `[checkin]`：签到文案模板、榜单人数与缺省范围
 - `[backup]`：每日备份时间和保留周期
 - `[alert]`：协议端掉线提醒
 - `[moderation]`：敏感词、刷屏、复读、处置方式和灰度模式
@@ -201,7 +205,7 @@ uv run python scripts/smoke_protocol.py --url ws://... --token ...
 | --- | --- |
 | `scripts/doctor.py` | 检查 Python、依赖、路径、时区和数据库 |
 | `scripts/backup.py` | 手动备份数据库 |
-| `scripts/restore.py <备份文件>` | 停止 bot 后恢复数据库 |
+| `scripts/restore.py <备份文件> [--yes] [--force]` | 停止 bot 后恢复数据库（会先校验备份与占用） |
 | `scripts/manage.py` | 离线管理管理员 |
 | `scripts/export_handover.py` | 导出换届交接包（不含凭据） |
 | `scripts/import_handover.py <交接包>` | 导入交接包 |
@@ -210,7 +214,8 @@ uv run python scripts/smoke_protocol.py --url ws://... --token ...
 
 ### 默认备份策略
 
-业务层默认每天 `03:00` 备份，保留最近 30 天每日副本和 6 个月月度副本。
+业务层默认每天 `03:00` 备份，按自然日保留最近 30 天每日副本（同一天多份只留最新）
+和 6 个月月度副本。
 生产环境仍建议把备份复制到异地存储。数据库损坏或迁移前，先停止 bot，再执行恢复。
 更多故障处理见 [`docs/ops.md`](docs/ops.md)。
 

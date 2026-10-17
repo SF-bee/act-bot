@@ -301,19 +301,49 @@ async def _default_gate(group_id: str, feature: str) -> bool:
     return await groups.feature_enabled(group_id, feature, default=features.default_of(feature))
 
 
-def _cooldown_ok(sub: Subscription, event: DomainEvent, now: float) -> bool:
+CooldownKey = tuple[str, str, str]
+_NO_PREVIOUS = object()
+
+
+def _cooldown_key(sub: Subscription, event: DomainEvent) -> CooldownKey:
+    """cooldown 维度：(消费者, 群, 触发者)。"""
+    return (sub.name, str(getattr(event, "group_id", "")), str(getattr(event, "user_id", "")))
+
+
+def _cooldown_available(sub: Subscription, event: DomainEvent, now: float) -> bool:
+    """只读判定：现在能不能执行（不写时间戳）。"""
     if sub.cooldown <= 0:
         return True
-    key = (sub.name, str(getattr(event, "group_id", "")), str(getattr(event, "user_id", "")))
-    last = _cooldown_seen.get(key)
-    if last is not None and now - last < sub.cooldown:
-        return False
+    last = _cooldown_seen.get(_cooldown_key(sub, event))
+    return last is None or now - last >= sub.cooldown
+
+
+def _cooldown_reserve(
+    sub: Subscription, event: DomainEvent, now: float
+) -> tuple[CooldownKey | None, object]:
+    """执行前预占时间戳，返回 (key, 旧值) 供失败回滚。
+
+    **先写后执行**而不是「成功后写」：NoneBot 并发处理同一事件时，
+    两次投递都先判定通过再执行就会放过重复事件，预占能让第二次直接冷却。
+    """
+    if sub.cooldown <= 0:
+        return None, _NO_PREVIOUS
+    key = _cooldown_key(sub, event)
+    previous = _cooldown_seen.get(key, _NO_PREVIOUS)
     _cooldown_seen[key] = now
     if len(_cooldown_seen) > _MAX_COOLDOWN_ENTRIES:
         for item, stamp in list(_cooldown_seen.items()):
             if now - stamp >= sub.cooldown:
                 _cooldown_seen.pop(item, None)
-    return True
+    return key, previous
+
+
+def _cooldown_rollback(key: CooldownKey, previous: object) -> None:
+    """消费者失败时回滚预占：有旧时间戳就恢复，没有就删键（失败可重试）。"""
+    if previous is _NO_PREVIOUS:
+        _cooldown_seen.pop(key, None)
+    else:
+        _cooldown_seen[key] = float(previous)  # type: ignore[arg-type]
 
 
 async def dispatch(
@@ -323,7 +353,12 @@ async def dispatch(
     gate: GateCallable | None = None,
     now: float | None = None,
 ) -> DispatchReport:
-    """把事件分发给订阅者：群级门控 → cooldown → 调用（异常隔离）。"""
+    """把事件分发给订阅者：群级门控 → cooldown → 调用（异常隔离）。
+
+    失败语义：单个消费者抛异常只影响它自己——计入 `report.failed`、记一条
+    `logger.exception` 日志、回滚它预占的 cooldown，其它消费者照常执行。
+    `src/plugins/events` 会把 `report.failed` 计入统计的 `errors` 指标。
+    """
     report = DispatchReport(event_type=type(event).__name__)
     moment = time.monotonic() if now is None else now
     group_id = str(getattr(event, "group_id", ""))
@@ -334,12 +369,18 @@ async def dispatch(
             if not allowed:
                 report.gated += 1
                 continue
-        if not _cooldown_ok(sub, event, moment):
+        if not _cooldown_available(sub, event, moment):
             report.cooled += 1
             continue
+        key: CooldownKey | None = None
+        previous: object = _NO_PREVIOUS
+        if sub.cooldown > 0:
+            key, previous = _cooldown_reserve(sub, event, moment)
         try:
             await sub.handler(event, bot)
         except Exception:  # noqa: BLE001 - 单个消费者失败不影响其它消费者
+            if key is not None:
+                _cooldown_rollback(key, previous)
             report.failed += 1
             logger.exception("事件消费者失败：%s · %s", report.event_type, sub.name)
             continue

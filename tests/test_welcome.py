@@ -90,6 +90,36 @@ async def test_group_welcome_toggle(fresh_db):
     assert json.loads(row.features)[groups.FEATURE_WELCOME] is True
 
 
+async def test_welcome_send_failure_propagates(fresh_db, monkeypatch, tmp_path):
+    """发送失败必须冒泡给事件中枢，否则 cooldown 不回滚、错误也不进统计。"""
+    import nonebot
+    from nonebot import get_driver
+
+    from src.core.config import load_settings
+    from src.core.events import GroupMemberJoin
+
+    try:
+        get_driver()
+    except Exception:  # noqa: BLE001 - 未初始化时才 init
+        nonebot.init()
+    from src.plugins import welcome as plugin
+
+    settings = load_settings(
+        env={}, toml_path=tmp_path / "missing.toml", load_dotenv_first=False
+    )
+    monkeypatch.setattr(plugin, "get_settings", lambda: settings)
+
+    class _BoomBot:
+        self_id = "100"
+
+        async def send_group_msg(self, **_kwargs) -> None:
+            raise RuntimeError("网络炸了")
+
+    event = GroupMemberJoin(group_id="123456789", user_id="200000001")
+    with pytest.raises(RuntimeError):
+        await plugin._on_member_join(event, _BoomBot())
+
+
 def test_welcome_config_defaults(tmp_path):
     settings = config.load_settings(
         env={}, toml_path=tmp_path / "missing.toml", load_dotenv_first=False

@@ -3,11 +3,13 @@
 
 用法：
     uv run python scripts/manage.py admins list
-    uv run python scripts/manage.py admins add <QQ> [--role admin|owner] [--note 备注]
+    uv run python scripts/manage.py admins add <QQ> [--role admin] [--note 备注]
     uv run python scripts/manage.py admins remove <QQ>
     uv run python scripts/manage.py admins transfer <QQ>     # 转让 owner
 
 说明：直接读写数据库；管理员信息只存在于数据库，代码中不出现任何 QQ 号。
+      owner 全局唯一：add 不接受 --role owner（首次初始化用 bootstrap_admin.py，
+      换届用 admins transfer），数据库还有部分唯一索引兜底。
 """
 from __future__ import annotations
 
@@ -48,6 +50,13 @@ async def _list() -> int:
 async def _add(qq: str, role: str, note: str) -> int:
     from src.core import permissions as perms
 
+    if role == perms.ROLE_OWNER:
+        sys.stderr.write(
+            "❌ admins add --role owner 已禁用（owner 全局唯一）：\n"
+            "   · 首次初始化：uv run python scripts/bootstrap_admin.py --qq <QQ>\n"
+            "   · 换届转让：  uv run python scripts/manage.py admins transfer <QQ>\n"
+        )
+        return 1
     created = await perms.add_admin(qq, role=role, note=note, created_by="manage.py")
     print(f"✅ {qq} {'已添加' if created else '已更新'}：{role}")
     return 0
@@ -56,9 +65,15 @@ async def _add(qq: str, role: str, note: str) -> int:
 async def _remove(qq: str) -> int:
     from src.core import permissions as perms
 
+    role = await perms.get_role(qq)  # 先取角色：移除之后再也查不到
     removed = await perms.remove_admin(qq)
-    print(f"✅ 已移除：{qq}" if removed else f"⚠️ 不存在：{qq}")
-    return 0 if removed else 1
+    if not removed:
+        print(f"⚠️ 不存在：{qq}")
+        return 1
+    print(f"✅ 已移除：{qq}")
+    if role == perms.ROLE_OWNER:
+        print("⚠️ 当前已无 owner：如需恢复，请用 scripts/bootstrap_admin.py --qq <QQ> 重新初始化")
+    return 0
 
 
 async def _transfer(qq: str) -> int:

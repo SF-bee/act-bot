@@ -12,7 +12,7 @@ from typing import Iterable
 
 from sqlalchemy import select
 
-from src.core import db
+from src.core import db, ids
 from src.core.db import utc_now
 from src.models.tables import AdminBinding
 
@@ -24,11 +24,11 @@ def _key(qq: str | int) -> str:
 
 
 def _group_id(value: str | int) -> str:
-    """规范化群号：至少 5 位数字，否则返回空串。"""
-    text = str(value).strip()
-    if text.isdigit() and len(text) >= 5:
-        return text
-    return ""
+    """规范化群号：至少 5 位数字，否则返回空串（命令层不抛异常）。"""
+    try:
+        return ids.normalize_group_id(value)
+    except ValueError:
+        return ""
 
 
 def bind(actor_qq: str | int, group_id: str | int) -> str:

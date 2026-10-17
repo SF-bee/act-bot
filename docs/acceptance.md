@@ -4,10 +4,14 @@
 
 - [ ] `uv run pytest -q` 全绿
 - [ ] （Docker 路线）`docker compose -f deploy/docker/docker-compose.yml config` 通过
-- [ ] `uv run python scripts/doctor.py` 全绿
+- [ ] `uv run python scripts/doctor.py` 全绿（允许出现 ⚠️ 警告项，如库被占用时）
 - [ ] `uv run python scripts/smoke_fake.py` 通过（Fake 端到端）
-- [ ] `scripts/backup.py` 能生成备份；`scripts/restore.py` 能恢复
+- [ ] `scripts/backup.py` 能生成备份；`scripts/restore.py` 能恢复（先停 bot；
+  交互确认或加 `--yes`；bot 在跑时会拒绝）
+- [ ] 同一天连做两次备份后再触发轮转，只保留当天最新一份、不影响其它日期
 - [ ] `scripts/manage.py admins list` 正常
+- [ ] `manage.py admins add <QQ> --role owner` 被拒绝并提示 `transfer`/`bootstrap_admin.py`
+- [ ] 退出（Ctrl+C / `systemctl stop`）日志无「退出时统计未落库」，或其中的计数符合预期
 
 ## 协议端接入后（真实端点）
 
@@ -18,6 +22,14 @@
 - [ ] 到 `[stats].digest_at` 后管理员私聊收到昨日群活跃简报（群里没有动静）
 - [ ] 在 `config/config.toml` 加一段 `[[push]]` 并重启；到点收到推送，`/push` 能看到该条，`/push test <名称>` 可立即试发
 - [ ] 断线重连：重启协议端后 bot 自动恢复（观察日志）
+
+## 群互动 · 签到（默认关闭）
+
+- [ ] 在 `config/config.toml` 打开 `checkin = true` 并重启，群内 `/config checkin on`
+- [ ] `/签到` 打卡成功（返回连续天数与累计次数）；同一天再发只提示「已经签过」，次数不增加
+- [ ] `/签到榜` 显示本群排行，`/签到榜 累计` 切换为累计榜
+- [ ] `/帮助` 里能看到 `/签到`、`/签到榜`
+- [ ] 重启业务层后签到数据仍在（`checkins` 表）
 
 ## 交接演练（换届前必做）
 

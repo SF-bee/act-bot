@@ -6,7 +6,9 @@
 FROM python:3.13-slim
 
 # uv 官方推荐：直接从发行镜像复制二进制（无需 pip 安装）
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# 版本钉死（不要用 latest）：构建工具换版本会让锁文件之外的行为悄悄变化；
+# 升级 = 改这里的 tag，然后跑一次 CI 的 docker-build job 验证镜像仍能构建
+COPY --from=ghcr.io/astral-sh/uv:0.11.22 /uv /uvx /bin/
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

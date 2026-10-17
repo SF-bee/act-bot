@@ -40,3 +40,46 @@ jobs:
 
       - name: Moderation smoke
         run: uv run python scripts/smoke_moderation.py
+
+      # ---- 部署模板静态校验：模板一坏，部署当天才发现就太晚了 ----
+      - name: Validate shell scripts
+        if: runner.os != 'Windows'
+        run: bash -n deploy/docker/fetch-qr.sh
+
+      - name: Validate PowerShell service script
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/deploy/windows/install-act-bot-service.ps1", [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+
+      - name: Validate macOS plist template
+        if: runner.os == 'macOS'
+        run: plutil -lint deploy/macos/com.actbot.dev.plist.template
+
+      - name: Validate docker compose template
+        if: runner.os == 'Linux'
+        run: ACTBOT_ENV_FILE="$PWD/deploy/docker/.env.example" docker compose -f deploy/docker/docker-compose.yml config -q
+
+      - name: Validate systemd unit
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p /tmp/act-ci
+          sed -e '/^User=/d' -e '/^Group=/d' -e '/^Documentation=/d' \
+              -e "s#^WorkingDirectory=.*#WorkingDirectory=$PWD#" \
+              -e "s#^EnvironmentFile=.*#EnvironmentFile=-/dev/null#" \
+              -e "s#^ExecStart=.*#ExecStart=/bin/true#" \
+              deploy/linux/act-bot.service > /tmp/act-ci/act-bot.service
+          systemd-analyze verify /tmp/act-ci/act-bot.service
+
+  docker-build:
+    name: Dockerfile build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build business image
+        run: docker build -f deploy/docker/Dockerfile -t act-bot:ci .

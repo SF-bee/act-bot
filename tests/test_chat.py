@@ -192,6 +192,71 @@ def test_render_reply_uses_persona(temp_data_dir):
     assert chat.render_reply("{unknown}", user_id="123") == "{unknown}"
 
 
+# ---------- 唤醒判定 ----------
+
+
+def test_wake_reason_uses_at_segment():
+    assert chat.wake_reason(at_self=True, text="", aliases=()) == "at"
+    assert chat.wake_reason(at_self=True, text="你好", aliases=("Yulia",)) == "at"
+
+
+def test_wake_reason_detects_plain_text_mention():
+    aliases = ("Yulia", "尤莉娅")
+    assert chat.wake_reason(at_self=False, text="@Yulia 在吗", aliases=aliases) == "name"
+    assert chat.wake_reason(at_self=False, text="@yulia", aliases=aliases) == "name"
+    assert chat.wake_reason(at_self=False, text="＠尤莉娅  在吗", aliases=aliases) == "name"
+    assert chat.wake_reason(at_self=False, text="@Yulia,在吗", aliases=aliases) == "name"
+
+
+def test_wake_reason_requires_word_boundary_for_ascii_alias():
+    assert chat.wake_reason(at_self=False, text="@Yuliana 在吗", aliases=("Yulia",)) == ""
+    assert chat.wake_reason(at_self=False, text="尤莉娅 在吗", aliases=("尤莉娅",)) == ""
+    # 中文别名不严格断词（避免把"尤莉娅酱"这类称呼漏掉）
+    assert chat.wake_reason(at_self=False, text="@尤莉娅酱 在吗", aliases=("尤莉娅",)) == "name"
+
+
+def test_wake_reason_ignores_unrelated_text():
+    assert chat.wake_reason(at_self=False, text="", aliases=("Yulia",)) == ""
+    assert chat.wake_reason(at_self=False, text="今天天气不错", aliases=("Yulia", "尤莉娅")) == ""
+
+
+def test_at_code_matches():
+    assert chat.at_code_matches(self_id="446619493", raw_message="[CQ:at,qq=446619493,name=Yulia] ")
+    assert chat.at_code_matches(self_id="446619493", raw_message='[CQ:at,qq="446619493"] 在吗')
+    assert not chat.at_code_matches(self_id="446619493", raw_message="[CQ:at,qq=999] 顶")
+    assert not chat.at_code_matches(self_id="4466194", raw_message="[CQ:at,qq=446619493]")
+    assert not chat.at_code_matches(self_id="", raw_message="[CQ:at,qq=446619493]")
+
+
+def test_wake_reason_falls_back_to_raw_message():
+    # 线上真实形态：at 段缺失、text 为空、只有 raw_message 里的 CQ 码
+    assert chat.wake_reason(
+        at_self=False,
+        text="",
+        aliases=("Yulia",),
+        self_id="446619493",
+        raw_message="[CQ:at,qq=446619493,name=Yulia] ",
+    ) == "at_raw"
+    # raw 里的 at 码是别人的，仍按名字兜底
+    assert chat.wake_reason(
+        at_self=False,
+        text="@Yulia 在吗",
+        aliases=("Yulia",),
+        self_id="446619493",
+        raw_message="[CQ:at,qq=999] ",
+    ) == "name"
+
+
+def test_mention_mismatch_hint():
+    assert chat.mention_mismatch_hint(self_id="", raw_message="", at_qqs=[]) == ""
+    assert chat.mention_mismatch_hint(
+        self_id="446619493",
+        raw_message="[CQ:at,qq=446619493,name=Yulia ] 在吗",
+        at_qqs=["446619493"],
+    ) != ""
+    assert chat.mention_mismatch_hint(self_id="123", raw_message="[CQ:at,qq=999] 顶", at_qqs=["999"]) == ""
+
+
 # ---------- 配置 ----------
 
 

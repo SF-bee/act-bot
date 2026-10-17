@@ -22,9 +22,9 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.plugin import PluginMetadata
 
-from src.core import audit, chat, features, groups, stats
+from src.core import audit, chat, features, groups, logsafe, stats
 from src.core import permissions as perms
-from src.core.config import get_settings
+from src.core.config import AppSettings, get_settings
 from src.core.events import MessageReceived, subscribe
 from src.core.onebot import command_prefixes, safe_group_name, safe_member_label
 
@@ -47,23 +47,103 @@ chat_cmd = on_command("chat", priority=10, block=True)
 _STATE = chat.ChatState()
 
 
+def _raw_field(event: MessageReceived, key: str) -> str:
+    """取底层事件的字符串字段（取不到返回空串）。"""
+    return str(getattr(getattr(event, "raw", None), key, "") or "")
+
+
+def _wake_reason(event: MessageReceived, settings: AppSettings) -> str:
+    """这条群消息是不是在叫机器人：返回 "at"、"at_raw"、"name" 或空串（判定见 core.chat）。"""
+    return chat.wake_reason(
+        at_self=event.at_self,
+        text=event.text or "",
+        aliases=settings.persona_aliases,
+        self_id=_raw_field(event, "self_id"),
+        raw_message=_raw_field(event, "raw_message"),
+    )
+
+
+def _at_qqs(event: MessageReceived) -> list[str]:
+    """取原始消息里 at 段的 qq 列表（诊断用，取不到就返回空列表）。"""
+    raw = getattr(event, "raw", None)
+    segments = getattr(raw, "message", None)
+    if not segments:
+        return []
+    found: list[str] = []
+    for segment in segments:
+        if getattr(segment, "type", "") != "at":
+            continue
+        data = getattr(segment, "data", None) or {}
+        found.append(str(data.get("qq", "")))
+    return found
+
+
+def _mention_diagnostic(event: MessageReceived) -> str:
+    """被 @ 却未被识别时返回一行诊断说明，否则返回空串（判定见 core.chat）。"""
+    raw = getattr(event, "raw", None)
+    return chat.mention_mismatch_hint(
+        self_id=str(getattr(raw, "self_id", "") or ""),
+        raw_message=str(getattr(raw, "raw_message", "") or ""),
+        at_qqs=_at_qqs(event),
+    )
+
+
+def _group_diagnostic(event: MessageReceived) -> str:
+    """领域事件说是私聊、底层事件却带群信息时返回诊断说明，否则返回空串。"""
+    raw = getattr(event, "raw", None)
+    if raw is None:
+        return ""
+    if str(getattr(raw, "message_type", "") or "") == "group" or getattr(raw, "group_id", None):
+        return "底层事件带群信息，但 is_group=False"
+    return ""
+
+
 @subscribe(MessageReceived, feature=features.FEATURE_CHAT, name="chat")
 async def _on_message(event: MessageReceived, bot: Bot) -> None:
     """群消息 → 判断是否在叫它 → 决定是否回应。"""
     if not event.is_group:
+        # 群消息被当成私聊时在这里静默丢掉，留一条 WARNING 方便定案
+        hint = _group_diagnostic(event)
+        if hint:
+            body = (event.text or "").strip()
+            logger.warning(
+                "群消息被当成非群消息：%s · group=%s user=%s raw_type=%s text_shape=%s fp=%s",
+                hint, event.group_id, event.user_id,
+                getattr(getattr(event, "raw", None), "message_type", ""),
+                logsafe.shape(body), logsafe.fingerprint(body),
+            )
         return
     text = (event.text or "").strip()
-    if not text and not event.at_self:
+    settings = get_settings()
+    called = _wake_reason(event, settings)
+    if called == "at_raw":
+        # 协议端没给 at 段、只给了 raw_message 里的 CQ 码：记下 payload 形态备查
+        logger.info(
+            "按 raw_message 识别 @（at 段缺失）：group=%s user=%s message_shape=%s raw_shape=%s fp=%s",
+            event.group_id, event.user_id,
+            logsafe.shape(_raw_field(event, "message")),
+            logsafe.shape(_raw_field(event, "raw_message")),
+            logsafe.fingerprint(text),
+        )
+    if not called:
+        # 明明 @ 了却识别不出来：留一条 WARNING，方便下次线上复现时抓到真实 payload
+        hint = _mention_diagnostic(event)
+        if hint:
+            logger.warning(
+                "疑似被叫但未识别：%s · group=%s user=%s at_self=%s at=%s text_shape=%s fp=%s",
+                hint, event.group_id, event.user_id, event.at_self, _at_qqs(event),
+                logsafe.shape(text), logsafe.fingerprint(text),
+            )
+    if not text and not called:
         return
     if text.startswith(command_prefixes()):
         return  # 命令交给命令系统，聊天引擎不掺和
 
-    settings = get_settings()
     rules = await chat.load_rules(event.group_id)
     decision = chat.decide(
         rules,
         text=text,
-        at_self=event.at_self,
+        at_self=bool(called),
         group_id=event.group_id,
         user_id=event.user_id,
         state=_STATE,
@@ -75,10 +155,11 @@ async def _on_message(event: MessageReceived, bot: Bot) -> None:
     )
     if not decision.reply:
         # 被叫却不回应属于值得留痕的情况（排查"为什么没理我"），其余降为 debug
-        log = logger.info if event.at_self else logger.debug
+        log = logger.info if called else logger.debug
         log(
-            "不回应（%s）：group=%s user=%s at_self=%s text=%r",
-            decision.reason, event.group_id, event.user_id, event.at_self, text[:30],
+            "不回应（%s）：group=%s user=%s 唤醒=%s at_self=%s text_shape=%s fp=%s",
+            decision.reason, event.group_id, event.user_id, called or "keyword",
+            event.at_self, logsafe.shape(text), logsafe.fingerprint(text),
         )
         return
 
@@ -88,15 +169,12 @@ async def _on_message(event: MessageReceived, bot: Bot) -> None:
         nickname=await safe_member_label(bot, event.group_id, event.user_id),
         group_name=await safe_group_name(bot, event.group_id),
     )
-    try:
-        await bot.send_group_msg(group_id=int(event.group_id), message=reply)
-    except Exception:  # noqa: BLE001 - 发送失败只记日志，不影响其它事件
-        logger.exception("聊天回应发送失败：group=%s user=%s", event.group_id, event.user_id)
-        return
+    # 发送失败不在这里吞掉：让中枢记 failed 并计入统计 errors（events.dispatch）
+    await bot.send_group_msg(group_id=int(event.group_id), message=reply)
     stats.record_auto_reply(event.group_id, tz_name=settings.timezone)
     logger.info(
-        "聊天回应（%s）：group=%s user=%s → %s",
-        decision.reason, event.group_id, event.user_id, reply[:40],
+        "聊天回应（%s）：group=%s user=%s 唤醒=%s → reply_len=%d",
+        decision.reason, event.group_id, event.user_id, called or "keyword", len(reply),
     )
 
 

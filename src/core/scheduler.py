@@ -32,36 +32,34 @@ def _resolve_timezone(name: str) -> zoneinfo.ZoneInfo | None:
         return None
 
 
-def setup_and_start() -> None:
-    """注册并启动调度器（容错：配置异常时只告警，不阻断 bot 启动）。"""
-    global _scheduler
-    if _scheduler is not None:
-        return
-    settings = get_settings()
+def _register_jobs(scheduler: AsyncIOScheduler, settings) -> list[str]:
+    """把各类任务注册进调度器（不启动；单个任务配置坏了只跳过它）。
+
+    返回注册后的 job id 列表，方便启动日志与测试核对。
+    """
     try:
         hour, minute = parse_hhmm(settings.backup_daily_at)
     except Exception as exc:
+        hour = minute = None
         logger.warning("每日备份时间配置无效（%s），已跳过备份调度", exc)
-        return
 
-    scheduler = AsyncIOScheduler(timezone=_resolve_timezone(settings.timezone))
+    if hour is not None and minute is not None:
+        def _daily_backup() -> None:
+            try:
+                path = backup.backup_database(
+                    keep_daily_days=settings.backup_keep_daily_days,
+                    keep_monthly=settings.backup_keep_monthly,
+                )
+                logger.info("每日备份完成：%s", path)
+            except Exception:
+                logger.exception("每日备份失败")
 
-    def _daily_backup() -> None:
-        try:
-            path = backup.backup_database(
-                keep_daily_days=settings.backup_keep_daily_days,
-                keep_monthly=settings.backup_keep_monthly,
-            )
-            logger.info("每日备份完成：%s", path)
-        except Exception:
-            logger.exception("每日备份失败")
-
-    scheduler.add_job(
-        _daily_backup,
-        CronTrigger(hour=hour, minute=minute),
-        id="daily-backup",
-        replace_existing=True,
-    )
+        scheduler.add_job(
+            _daily_backup,
+            CronTrigger(hour=hour, minute=minute),
+            id="daily-backup",
+            replace_existing=True,
+        )
 
     if settings.feature("stats"):
         async def _flush_stats() -> None:
@@ -81,38 +79,57 @@ def setup_and_start() -> None:
         )
 
         if settings.stats_digest_at:
-            digest_hour, digest_minute = parse_hhmm(settings.stats_digest_at)
+            try:
+                digest_hour, digest_minute = parse_hhmm(settings.stats_digest_at)
+            except Exception as exc:
+                logger.warning("统计日报时间配置无效（%s），已跳过日报调度", exc)
+            else:
+                async def _daily_stats_digest() -> None:
+                    """把昨天的群活跃简报私聊给管理员（只在私聊，不打扰群成员）。"""
+                    try:
+                        from src.core import notify, persona, stats
 
-            async def _daily_stats_digest() -> None:
-                """把昨天的群活跃简报私聊给管理员（只在私聊，不打扰群成员）。"""
-                try:
-                    from src.core import notify, persona, stats
+                        digest = await stats.daily_digest(tz_name=settings.timezone)
+                        text = stats.render_digest(
+                            digest, bot_name=persona.name(), bot_title=persona.title()
+                        )
+                        if not text:
+                            logger.info("统计日报：%s 没有群数据，跳过", digest.date)
+                            return
+                        sent = await notify.notify_admins(text)
+                        logger.info("统计日报已发送：%d 条私聊（%s）", sent, digest.date)
+                    except Exception:  # noqa: BLE001 - 日报失败不影响机器人运行
+                        logger.exception("统计日报发送失败")
 
-                    digest = await stats.daily_digest(tz_name=settings.timezone)
-                    text = stats.render_digest(
-                        digest, bot_name=persona.name(), bot_title=persona.title()
-                    )
-                    if not text:
-                        logger.info("统计日报：%s 没有群数据，跳过", digest.date)
-                        return
-                    sent = await notify.notify_admins(text)
-                    logger.info("统计日报已发送：%d 条私聊（%s）", sent, digest.date)
-                except Exception:  # noqa: BLE001 - 日报失败不影响机器人运行
-                    logger.exception("统计日报发送失败")
+                scheduler.add_job(
+                    _daily_stats_digest,
+                    CronTrigger(hour=digest_hour, minute=digest_minute),
+                    id="stats-digest",
+                    replace_existing=True,
+                )
 
-            scheduler.add_job(
-                _daily_stats_digest,
-                CronTrigger(hour=digest_hour, minute=digest_minute),
-                id="stats-digest",
-                replace_existing=True,
-            )
-    registered = push.register_jobs(scheduler, settings)
+    try:
+        registered = push.register_jobs(scheduler, settings)
+    except Exception:  # noqa: BLE001 - 推送配置坏了不应影响其它定时任务
+        logger.exception("定时推送注册失败，已跳过")
+        registered = 0
     if registered:
         logger.info("已注册 %d 个定时推送（config.toml 的 [[push]]）", registered)
 
+    return [job.id for job in scheduler.get_jobs()]
+
+
+def setup_and_start() -> None:
+    """注册并启动调度器（容错：单个任务配置异常时只告警，不阻断 bot 启动）。"""
+    global _scheduler
+    if _scheduler is not None:
+        return
+    settings = get_settings()
+    scheduler = AsyncIOScheduler(timezone=_resolve_timezone(settings.timezone))
+    job_ids = _register_jobs(scheduler, settings)
     scheduler.start()
     _scheduler = scheduler
-    logger.info("调度器已启动：每日备份 %02d:%02d（%s）", hour, minute, settings.timezone)
+    logger.info("调度器已启动：%s", "、".join(job_ids) if job_ids else "无定时任务")
 
 
 def shutdown() -> None:

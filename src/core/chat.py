@@ -100,6 +100,74 @@ def parse_add_args(args: Sequence[str]) -> tuple[str, str, str, str]:
     return scope, kind, items[1].strip(), " ".join(items[2:]).strip()
 
 
+# ---------- 唤醒判定（纯函数） ----------
+
+AT_MARKS = ("@", "＠")
+
+
+def at_code_matches(*, self_id: str, raw_message: str) -> bool:
+    """raw_message 里有没有指向本机的 CQ at 码。
+
+    部分协议端（如 LLBot）只给 raw_message 里的 CQ 码、给不出 at 段，
+    所以按 CQ 码兜底认一次。兼容 [CQ:at,qq=123]、[CQ:at,qq="123"]、
+    [CQ:at,qq=123,name=Yulia] 等形态。
+    """
+    uid = str(self_id or "").strip()
+    if not uid or not raw_message:
+        return False
+    pattern = r'\[CQ:at,qq="?{0}"?(?=[,\]])'.format(re.escape(uid))
+    return re.search(pattern, raw_message) is not None
+
+
+def wake_reason(
+    *,
+    at_self: bool,
+    text: str,
+    aliases: Sequence[str],
+    self_id: str = "",
+    raw_message: str = "",
+) -> str:
+    """判断一条群消息在不在叫机器人：返回 "at"、"at_raw"、"name" 或空串。
+
+    - "at"：协议端如实上报了 at 段；
+    - "at_raw"：at 段缺失，但 raw_message 里有指向本机的 CQ at 码；
+    - "name"：都认不出来时按人设名/别名兜底（如 "@Yulia 在吗"，含全角＠），
+      纯 ASCII 名字严格断词，避免 "@Yuliana" 把 "Yulia" 唤醒。
+    """
+    if at_self:
+        return "at"
+    if at_code_matches(self_id=self_id, raw_message=raw_message):
+        return "at_raw"
+    body = (text or "").strip()
+    if not body:
+        return ""
+    lowered = body.lower()
+    for alias in aliases:
+        if not alias:
+            continue
+        for mark in AT_MARKS:
+            if not lowered.startswith(mark + alias.lower()):
+                continue
+            rest = lowered[len(mark) + len(alias):]
+            if (
+                alias[-1:].isascii() and alias[-1:].isalnum()
+                and rest[:1].isascii() and rest[:1].isalnum()
+            ):
+                continue
+            return "name"
+    return ""
+
+
+def mention_mismatch_hint(*, self_id: str, raw_message: str, at_qqs: Sequence[str]) -> str:
+    """协议端明明 @ 了本机、却没被识别成 at 时返回诊断说明，否则返回空串。"""
+    uid = str(self_id or "")
+    if not uid:
+        return ""
+    if "[CQ:at,qq={0}".format(uid) in (raw_message or "") or uid in at_qqs:
+        return "原始消息里有指向本机的 at，但未被识别为 @"
+    return ""
+
+
 # ---------- 匹配与选取（纯函数） ----------
 
 

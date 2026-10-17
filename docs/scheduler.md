@@ -1,13 +1,17 @@
 # 定时任务与定时推送
 
-**一个调度器，不是一功能一模块。** 所有定时任务都注册在 `src/core/scheduler.py` 的
-`setup_and_start()` 里（进程启动时由 `src/bot.py` 调用），底层是 APScheduler，
-跨平台、不依赖系统 cron / 计划任务。
+**一个调度器，不是一功能一模块。** 所有定时任务都由 `src/core/scheduler.py` 的
+`_register_jobs(scheduler, settings)` 注册（`setup_and_start()` 负责创建/启动调度器，
+进程启动时由 `src/bot.py` 调用），底层是 APScheduler，跨平台、不依赖系统 cron / 计划任务。
+
+**单个任务配置写错只跳过它自己**：例如 `backup.daily_at` 非法时只少掉每日备份，
+统计落库 / 日报 / 推送照常注册；启动日志会列出实际注册的 job id。
 
 | 任务 | 触发 | 位置 |
 | --- | --- | --- |
 | 每日备份 | `CronTrigger`，`backup.daily_at` | `scheduler.py` |
 | 统计落库 | `IntervalTrigger`，`stats.flush_seconds` | `scheduler.py` |
+| 退出兜底落库 | 进程退出钩子，`stats.flush_timeout_seconds` | `src/bot.py` |
 | 每日活跃简报 | `CronTrigger`，`stats.digest_at` | `scheduler.py` |
 | 定时推送 | `CronTrigger`，来自 config.toml 的 `[[push]]` | `src/core/push.py` |
 

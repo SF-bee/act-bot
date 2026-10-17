@@ -13,6 +13,7 @@
 
 - [ ] 带新负责人在"陌生机器"按 `docs/deploy-*.md` 从零部署一次
 - [ ] 演练 `import_handover.py` 与 `manage.py admins transfer`
+  （owner 全库唯一：transfer 会先降级旧 owner 再提升新号；已有 owner 时不要用 `admins add --role owner`）
 
 ## T-0（切换）
 
@@ -31,3 +32,6 @@
 `manifest.json`（版本 / 统计）、`act.db`（数据）、`uploads/`（附件）、`config.example.toml`、`docs/`。
 
 **绝不包含**：`.env`、`config.toml`、任何 token / 凭据、任何账号登录态（新号需自行扫码）。
+
+> 旧库若历史上出现过多个 owner，导入后首次启动会自动去重（迁移 `008_single_owner.sql`
+> 只保留 id 最大的 owner，其余降为 admin）。

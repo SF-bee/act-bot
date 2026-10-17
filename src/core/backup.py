@@ -50,7 +50,11 @@ def rotate_backups(
     keep_daily_days: int = 30,
     keep_monthly: int = 6,
 ) -> list[Path]:
-    """滚动清理备份：保留最近 N 天 + 最近 M 个月各一份。返回被删除的文件列表。"""
+    """滚动清理备份：按自然日保留最近 N 天每天一份 + 最近 M 个月各一份。
+
+    同一天可能有多份（一天多次备份），只保留最新那份；因此按文件数算不准，
+    必须按文件名里的日期分组。返回被删除的文件列表。
+    """
     files = sorted(directory.glob(f"{BACKUP_PREFIX}*{BACKUP_SUFFIX}"))
     if not files:
         return []
@@ -58,16 +62,20 @@ def rotate_backups(
         return []  # 两个都关 = 不做任何清理
 
     keep: set[Path] = set()
-    if keep_daily_days > 0:
-        keep.update(files[-keep_daily_days:])
-
+    days: dict[str, Path] = {}
     months: dict[str, Path] = {}
     for file in files:
-        parts = file.stem.split("-")
-        if len(parts) < 2 or len(parts[1]) < 6:
+        stamp = file.stem.split("-")[1] if "-" in file.stem else ""
+        if len(stamp) >= 8 and stamp[:8].isdigit():
+            days[stamp[:8]] = file  # sorted 升序 → 后写覆盖 = 当天最新
+        if len(stamp) >= 6 and stamp[:6].isdigit():
+            months[stamp[:6]] = file  # 同月保留最新
+        elif len(stamp) < 6:
             keep.add(file)  # 文件名不符合约定 → 不主动删除
-            continue
-        months[parts[1][:6]] = file  # 同月保留最新（sorted 升序，后写覆盖）
+
+    if keep_daily_days > 0:
+        for day in sorted(days)[-keep_daily_days:]:
+            keep.add(days[day])
     if keep_monthly > 0:
         for month in sorted(months)[-keep_monthly:]:
             keep.add(months[month])

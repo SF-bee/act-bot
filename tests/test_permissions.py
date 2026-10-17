@@ -36,6 +36,33 @@ async def test_remove_and_transfer(fresh_db):
     assert await perms.remove_admin("10001") is False
 
 
+async def test_second_owner_is_rejected(fresh_db):
+    from src.core import permissions as perms
+
+    await perms.add_admin("10001", role=perms.ROLE_OWNER)
+    with pytest.raises(ValueError, match="已存在 owner"):
+        await perms.add_admin("10002", role=perms.ROLE_OWNER)
+    assert await perms.get_role("10001") == perms.ROLE_OWNER
+    assert await perms.get_role("10002") is None
+
+
+async def test_sole_owner_cannot_be_demoted(fresh_db):
+    from src.core import permissions as perms
+
+    await perms.add_admin("10001", role=perms.ROLE_OWNER)
+    with pytest.raises(ValueError, match="唯一 owner"):
+        await perms.add_admin("10001", role=perms.ROLE_ADMIN)
+    assert await perms.get_role("10001") == perms.ROLE_OWNER
+
+
+async def test_repeat_owner_add_is_idempotent(fresh_db):
+    from src.core import permissions as perms
+
+    assert await perms.add_admin("10001", role=perms.ROLE_OWNER) is True
+    assert await perms.add_admin("10001", role=perms.ROLE_OWNER) is False
+    assert await perms.get_role("10001") == perms.ROLE_OWNER
+
+
 async def test_qq_validation(fresh_db):
     from src.core import permissions as perms
 

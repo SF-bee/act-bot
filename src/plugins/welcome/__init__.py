@@ -57,11 +57,8 @@ async def _on_member_join(event: GroupMemberJoin, bot: Bot) -> None:
         bot_name=persona.name(),
         bot_title=persona.title(),
     )
-    try:
-        await bot.send_group_msg(group_id=int(event.group_id), message=message)
-    except Exception:  # noqa: BLE001 - 发送失败只记日志
-        logger.exception("发送入群欢迎失败：group=%s user=%s", event.group_id, event.user_id)
-        return
+    # 发送失败不在这里吞掉：让中枢记 failed、回滚 cooldown 并计入统计（events.dispatch）
+    await bot.send_group_msg(group_id=int(event.group_id), message=message)
     stats.record_auto_reply(event.group_id, tz_name=settings.timezone)
     logger.info("已发送入群欢迎：group=%s user=%s", event.group_id, event.user_id)
 

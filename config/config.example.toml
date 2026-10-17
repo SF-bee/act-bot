@@ -7,11 +7,12 @@
 
 [features]
 # 全局功能开关（关掉后该功能在所有群都不响应）。
-# 名册以 src/core/features.py 为准，当前可用：welcome / chat / stats / moderation
+# 名册以 src/core/features.py 为准，当前可用：welcome / chat / stats / moderation / checkin
 welcome = true        # 入群欢迎
 chat = false          # 聊天互动（默认关，需显式打开）
 stats = true          # 活跃统计
 # moderation = true   # 群管理 · 风控（默认开；如需全局关闭改为 false）
+# checkin = true      # 群互动 · 签到（默认关，需显式打开）
 
 [persona]
 # 机器人对外人设（项目技术名仍是 act-bot，见 README「人设」）
@@ -43,6 +44,8 @@ escalate_window_seconds = 120
 # 统计（内存累加 → 定时落库；单条消息绝不写库）
 # 落库间隔（秒）；/统计 的今日数字 = 内存增量 + 当日已落库，不会因落库而归零
 flush_seconds = 60
+# 退出时等待统计落库的上限（秒）；超时就放弃并记录未落库计数，避免卡住退出
+flush_timeout_seconds = 10
 # /统计 里给管理员看的活跃 Top N（仅内存，不落库，重启清空）
 top_users = 5
 # /统计 的迷你走势显示多少天
@@ -51,6 +54,17 @@ trend_days = 7
 range_max_days = 90
 # 每日群活跃简报（昨天的数据）私聊给管理员的时间（HH:MM）；off 或留空 = 不发
 digest_at = "09:00"
+
+[checkin]
+# 群互动 · 签到（全局开关在 [features].checkin，群级开关用 /config checkin on|off）
+# 榜单一次显示多少人（1-50）
+rank_size = 10
+# 默认榜单范围：month（本月）| all（累计）；群里可用 /签到榜 累计 临时切换
+rank_scope = "month"
+# 占位符：{nickname} {date} {streak} {total} {rank} {milestone} {group_name} {bot_name} {bot_title}
+daily_text = "{nickname} 签到成功！连续 {streak} 天，累计 {total} 次，今天第 {rank} 个到～"
+repeat_text = "{nickname} 今天已经签过啦，明天再来～（连续 {streak} 天 / 累计 {total} 次）"
+milestone_text = "{nickname} 连续签到 {milestone} 天！累计 {total} 次，厉害～"
 
 [broadcast]
 # 广播时群与群之间的发送间隔（秒），用于控制频率、降低风控
