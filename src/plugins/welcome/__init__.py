@@ -68,7 +68,7 @@ async def _handle_welcome_cmd(bot: Bot, event: MessageEvent) -> None:
     if not await perms.is_admin(str(event.user_id)):
         await welcome_cmd.finish()  # 非管理员：静默，不暴露管理命令
     if not isinstance(event, GroupMessageEvent):
-        await welcome_cmd.finish("这个命令要在群里用哦。")
+        await welcome_cmd.finish("这个命令要在群里看才行哦～")
     action = parse_action(event.message.extract_plain_text())
     group_id = str(event.group_id)
     settings = get_settings()
@@ -76,7 +76,7 @@ async def _handle_welcome_cmd(bot: Bot, event: MessageEvent) -> None:
     if action:
         # 开关类操作统一走 /config：同一份群级状态只保留一个写入口
         await welcome_cmd.finish(
-            "开关请用 /config welcome on|off；/welcome 只查看本群状态与欢迎语预览。"
+            "开关请交给 /config welcome on|off；/welcome 负责查看本群状态和欢迎语预览～"
         )
 
     enabled = await groups.feature_enabled(group_id, features.FEATURE_WELCOME)
@@ -96,4 +96,3 @@ async def _handle_welcome_cmd(bot: Bot, event: MessageEvent) -> None:
         + "\n欢迎语预览：\n"
     )
     await welcome_cmd.finish(head + preview)
-

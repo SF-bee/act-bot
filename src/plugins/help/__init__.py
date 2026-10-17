@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import nonebot
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.plugin import PluginMetadata
 
 from src.core import permissions as perms
@@ -20,7 +20,7 @@ from src.core.help import ADMIN_ROLE, HelpEntry, build_entry, render_help
 
 __plugin_meta__ = PluginMetadata(
     name="help",
-    description="命令帮助菜单（普通成员与管理员看到的内容不同）",
+    description="命令帮助菜单（按角色过滤；群里不显示管理员命令）",
     usage="/帮助 — 查看可用命令（别名 /help）",
     extra={"role": "member", "order": 10},
 )
@@ -46,9 +46,23 @@ def collect_entries() -> list[HelpEntry]:
     return entries
 
 
+def _in_group(event: MessageEvent) -> bool:
+    """这条消息是不是发在群里（看类型，兼看协议端给的 message_type）。"""
+    if isinstance(event, GroupMessageEvent):
+        return True
+    return str(getattr(event, "message_type", "") or "") == "group"
+
+
 @help_cmd.handle()
 async def _handle_help(event: MessageEvent) -> None:
     role = await perms.get_role(str(event.user_id))
     header = f"{persona.intro()} · 命令（你的权限：{role or '普通成员'}）"
-    await help_cmd.finish(render_help(collect_entries(), is_admin=role is not None, header=header))
+    await help_cmd.finish(
+        render_help(
+            collect_entries(),
+            is_admin=role is not None,
+            in_group=_in_group(event),
+            header=header,
+        )
+    )
 

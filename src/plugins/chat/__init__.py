@@ -194,7 +194,7 @@ async def _handle_chat(bot: Bot, event: MessageEvent) -> None:
     if not await perms.is_admin(str(event.user_id)):
         await chat_cmd.finish()  # 非管理员：静默
     if not isinstance(event, GroupMessageEvent):
-        await chat_cmd.finish("聊天命令要在群里用。")
+        await chat_cmd.finish("聊天命令要在群里管理才行哦～")
 
     action, args = chat.parse_chat_command(event.message.extract_plain_text())
     group_id = str(event.group_id)
@@ -223,14 +223,14 @@ async def _handle_chat(bot: Bot, event: MessageEvent) -> None:
 
     if action == "del":
         if not args or not args[0].lstrip("#").isdigit():
-            await chat_cmd.finish("用法：/chat del <id>（id 见 /chat list）")
+            await chat_cmd.finish("用法：/chat del <id>（id 可以在 /chat list 里找到～）")
         rule_id = int(args[0].lstrip("#"))
         if not await chat.delete_rule(rule_id, group_id=group_id):
-            await chat_cmd.finish("没有这条规则，或它属于别的群：#{0}".format(rule_id))
+            await chat_cmd.finish("找不到这条规则，或它属于别的群：#{0}".format(rule_id))
         await audit.record(
             "chat.del", actor_qq=str(event.user_id), group_id=group_id, detail="#{0}".format(rule_id)
         )
-        await chat_cmd.finish("已删除规则 #{0}".format(rule_id))
+        await chat_cmd.finish("规则 #{0} 已删除，聊天池清爽啦～".format(rule_id))
 
     if action == "list":
         wanted = args[0].strip().lower() if args else ""
@@ -256,7 +256,7 @@ async def _handle_chat(bot: Bot, event: MessageEvent) -> None:
     rules = await chat.load_rules(group_id)
     counts = Counter(rule.kind for rule in rules if rule.enabled)
     lines = [
-        "聊天互动（本群）：{0}｜全局：{1}".format(
+        "聊天互动（本群）：{0}｜全局：{1} ✨".format(
             "已开启" if group_on else "已关闭", "已开启" if global_on else "已关闭"
         ),
         "可用规则 {0} 条：{1}".format(
@@ -272,4 +272,3 @@ async def _handle_chat(bot: Bot, event: MessageEvent) -> None:
         "开关：/config chat on|off｜" + _usage_text().splitlines()[0].replace("用法：", ""),
     ]
     await chat_cmd.finish("\n".join(lines))
-

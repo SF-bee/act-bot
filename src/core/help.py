@@ -63,17 +63,25 @@ def render_help(
     entries: Iterable[HelpEntry],
     *,
     is_admin: bool,
+    in_group: bool = False,
     header: str = "",
 ) -> str:
-    """渲染帮助文本：普通成员只看到 member 条目，管理员额外看到 admin 条目。"""
+    """渲染帮助文本：普通成员只看到 member 条目，管理员额外看到 admin 条目。
+
+    群里一律不显示管理员命令（即使是 owner）——管理员命令只在私聊里露出，
+    群聊里给管理员留一句「私聊查看」的提示，避免命令清单在群里被围观。
+    """
     all_entries = sorted(entries, key=_sort_key)
     member_entries = [e for e in all_entries if e.role != ADMIN_ROLE]
     admin_entries = [e for e in all_entries if e.role == ADMIN_ROLE]
+    show_admin = is_admin and not in_group
     lines: list[str] = []
     if header:
         lines.append(header)
     lines.extend(_section("常用命令", member_entries))
-    if is_admin:
+    if show_admin:
         lines.extend(_section("管理员命令", admin_entries))
+    elif is_admin and in_group:
+        lines.extend(["", "管理相关指令只在私聊里显示，私聊发送 /帮助 查看。"])
     return "\n".join(lines).strip()
 

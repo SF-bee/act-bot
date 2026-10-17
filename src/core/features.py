@@ -15,6 +15,7 @@ FEATURE_CHAT = "chat"
 FEATURE_STATS = "stats"
 FEATURE_MODERATION = "moderation"
 FEATURE_CHECKIN = "checkin"
+FEATURE_FUN = "fun"
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ _REGISTRY: tuple[Feature, ...] = (
     Feature(FEATURE_STATS, "统计", True, "消息量/活跃度/入群退群/在线时长计数"),
     Feature(FEATURE_MODERATION, "群管理 · 风控", True, "敏感信息撤回警告、刷屏禁言、群管理命令"),
     Feature(FEATURE_CHECKIN, "群互动 · 签到", False, "成员 /签到 打卡与签到榜"),
+    Feature(FEATURE_FUN, "群互动 · 骰子/运势", True, "成员 /骰子、/运势、/选一个 的轻量互动"),
 )
 _BY_NAME = {item.name: item for item in _REGISTRY}
 

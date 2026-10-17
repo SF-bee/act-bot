@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .features import all_features, get as feature_get, names as feature_names
+from .fun import MAX_FORTUNE_TEXT
 from .paths import config_file, env_file
 
 try:  # Python >= 3.11 自带 tomllib
@@ -33,7 +34,7 @@ _DEFAULT_PERSONA_TITLE = "ACT 动漫社助理"
 _DEFAULT_PERSONA_ALIASES = ("尤莉娅", "尤莉", "小尤")
 
 _DEFAULT_WELCOME_TEXT = (
-    "欢迎 {nickname} 加入 ACT 动漫社！我是社团助理 {bot_name}，先看看群公告，有问题随时在群里问～"
+    "欢迎 {nickname} 加入 ACT 动漫社！我是社团助理 {bot_name}，欢迎来玩～先看看群公告，有事尽管喊我！"
 )
 
 _DEFAULT_MODERATION_WARN_TEXT = (
@@ -50,6 +51,16 @@ _DEFAULT_CHECKIN_REPEAT_TEXT = (
 )
 _DEFAULT_CHECKIN_MILESTONE_TEXT = (
     "{nickname} 连续签到 {milestone} 天！累计 {total} 次，厉害～"
+)
+
+# 群互动 · 骰子/运势/选一个（[fun]；逻辑见 src/core/fun.py）
+_DEFAULT_FUN_FORTUNE_TEXTS: tuple[str, ...] = (
+    "大吉|{nickname} 今天灵感爆棚！适合画画写文，灵感来了可别让它溜走～",
+    "中吉|{nickname} 今天适合快乐补番，顺手把待办清一清，收获双倍满足！",
+    "小吉|{nickname} 今天会遇到一点小惊喜，记得留意身边的好消息呀～",
+    "吉|{nickname} 适合整理桌面和硬盘，说不定能翻出珍藏的快乐回忆！",
+    "末吉|{nickname} 今天慢一点也没关系，稳稳走好每一步就是胜利～",
+    "凶|{nickname} 今天请把运气交给明天，早点睡，别熬夜啦！",
 )
 
 
@@ -97,6 +108,8 @@ class AppSettings:
     checkin_milestone_text: str = _DEFAULT_CHECKIN_MILESTONE_TEXT
     checkin_rank_size: int = 10
     checkin_rank_scope: str = "month"
+    # 群互动 · 骰子/运势/选一个（[fun]；全局开关在 [features].fun）
+    fun_fortune_texts: tuple[str, ...] = _DEFAULT_FUN_FORTUNE_TEXTS
     backup_daily_at: str = "03:00"
     backup_keep_daily_days: int = 30
     backup_keep_monthly: int = 6
@@ -439,6 +452,21 @@ def load_settings(
     if checkin_rank_scope not in ("month", "all"):
         raise ConfigError('[checkin].rank_scope 只能是 "month" 或 "all"')
 
+    fun_cfg = raw.get("fun", {})
+    if not isinstance(fun_cfg, dict):
+        raise ConfigError("[fun] 段落格式错误：应为键值对")
+    raw_fortune_texts = fun_cfg.get("fortune_texts", list(_DEFAULT_FUN_FORTUNE_TEXTS))
+    if not isinstance(raw_fortune_texts, list) or not raw_fortune_texts:
+        raise ConfigError("[fun].fortune_texts 应为非空字符串数组")
+    for index, item in enumerate(raw_fortune_texts, start=1):
+        if not isinstance(item, str) or not item.strip():
+            raise ConfigError(f"[fun].fortune_texts 第 {index} 条应为非空字符串")
+        if len(item) > MAX_FORTUNE_TEXT:
+            raise ConfigError(
+                f"[fun].fortune_texts 第 {index} 条过长（最多 {MAX_FORTUNE_TEXT} 字）"
+            )
+    fun_fortune_texts = tuple(item.strip() for item in raw_fortune_texts)
+
     backup = raw.get("backup", {})
     daily_at = str(backup.get("daily_at", "03:00"))
     parse_hhmm(daily_at)  # 提前校验：配置错误立即暴露
@@ -532,6 +560,7 @@ def load_settings(
         checkin_milestone_text=checkin_milestone_text,
         checkin_rank_size=int(checkin_rank_size),
         checkin_rank_scope=checkin_rank_scope,
+        fun_fortune_texts=fun_fortune_texts,
         backup_daily_at=daily_at,
         backup_keep_daily_days=int(keep_daily),
         backup_keep_monthly=int(keep_monthly),

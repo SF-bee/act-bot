@@ -86,7 +86,7 @@ async def test_migration_008_dedupes_legacy_owners(temp_data_dir, monkeypatch, t
         conn.commit()
 
     monkeypatch.setattr(db, "MIGRATIONS_DIR", real_dir)
-    assert db.apply_migrations() == 8
+    assert db.apply_migrations() == 9
 
     with sqlite3.connect(str(target)) as conn:
         rows = conn.execute("SELECT qq, role FROM admins ORDER BY id").fetchall()

@@ -7,12 +7,13 @@
 
 [features]
 # 全局功能开关（关掉后该功能在所有群都不响应）。
-# 名册以 src/core/features.py 为准，当前可用：welcome / chat / stats / moderation / checkin
+# 名册以 src/core/features.py 为准，当前可用：welcome / chat / stats / moderation / checkin / fun
 welcome = true        # 入群欢迎
 chat = false          # 聊天互动（默认关，需显式打开）
 stats = true          # 活跃统计
 # moderation = true   # 群管理 · 风控（默认开；如需全局关闭改为 false）
 # checkin = true      # 群互动 · 签到（默认关，需显式打开）
+fun = true            # 群互动 · 骰子/运势/选一个（默认开）
 
 [persona]
 # 机器人对外人设（项目技术名仍是 act-bot，见 README「人设」）
@@ -25,7 +26,7 @@ aliases = ["尤莉娅", "尤莉", "小尤", "群主"]
 # 入群欢迎语（本文件是默认值；群级开关在 groups.features，用 /config welcome on|off）
 # 占位符：{nickname} 新人在群里的显示名、{group_name} 群名、{user_id} QQ 号、
 #         {bot_name} 机器人人设名、{bot_title} 机器人身份
-text = "欢迎 {nickname} 加入 ACT 动漫社！我是社团助理 {bot_name}，先看看群公告，有问题随时在群里问～"
+text = "欢迎 {nickname} 加入 ACT 动漫社！我是社团助理 {bot_name}，欢迎来玩～先看看群公告，有事尽管喊我！"
 # 发送时是否 @ 新人
 at_newcomer = true
 
@@ -65,6 +66,20 @@ rank_scope = "month"
 daily_text = "{nickname} 签到成功！连续 {streak} 天，累计 {total} 次，今天第 {rank} 个到～"
 repeat_text = "{nickname} 今天已经签过啦，明天再来～（连续 {streak} 天 / 累计 {total} 次）"
 milestone_text = "{nickname} 连续签到 {milestone} 天！累计 {total} 次，厉害～"
+
+[fun]
+# 群互动 · 骰子 / 今日运势 / 随机选择（全局开关在 [features].fun，群级开关用 /config fun on|off）
+# 每条形如 "等级|文案"；没有 | 时等级显示为「运势」。
+# 占位符：{nickname} 群昵称、{date} 本地日期（YYYY-MM-DD）；未知占位符原样保留。
+# 同一用户同一天结果稳定（按用户+日期哈希），换天/换人才会变。
+fortune_texts = [
+  "大吉|{nickname} 今天灵感爆棚！适合画画写文，灵感来了可别让它溜走～",
+  "中吉|{nickname} 今天适合快乐补番，顺手把待办清一清，收获双倍满足！",
+  "小吉|{nickname} 今天会遇到一点小惊喜，记得留意身边的好消息呀～",
+  "吉|{nickname} 适合整理桌面和硬盘，说不定能翻出珍藏的快乐回忆！",
+  "末吉|{nickname} 今天慢一点也没关系，稳稳走好每一步就是胜利～",
+  "凶|{nickname} 今天请把运气交给明天，早点睡，别熬夜啦！",
+]
 
 [broadcast]
 # 广播时群与群之间的发送间隔（秒），用于控制频率、降低风控
@@ -149,4 +164,3 @@ sensitive_pattern_action = "warn"
 # targets = ["admins", "123456789"]
 # text = "【值班】{date} {time} 请负责人留意群消息。"
 # feature = "stats"
-

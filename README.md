@@ -36,6 +36,7 @@ QQ 群成员
 | 聊天互动 | @ 机器人或命中关键词 | 支持概率回复、冷却、连续 @ 分档和群级规则；默认关闭 |
 | 活跃统计 | `/统计` | 支持今天、昨天、本周、上周、本月、近 N 天和趋势；管理员可看额外指标 |
 | 群互动 · 签到 | `/签到`、`/签到榜` | 成员每日打卡，记录连续天数与累计次数；支持本月/累计排行榜；默认关闭 |
+| 群互动 · 骰子/运势 | `/骰子`、`/运势`、`/选一个` | 掷骰子、按用户+日期生成稳定运势、从选项里随机选一个；默认开启 |
 | 群管理与风控 | 自动规则、`/mod`、`/warn`、`/mute` 等 | 敏感词、URL/号码模式、刷屏、复读、@全体；支持撤回、警告、禁言、踢出和灰度模式 |
 | 定时推送 | `config/config.toml` 的 `[[push]]` | 按天/周推送到群或管理员，可试发 |
 | 掉线提醒 | 协议端重新上线 | 汇总掉线时刻、在线时长和离线时长后私聊管理员 |
@@ -158,6 +159,9 @@ uv run python scripts/smoke_protocol.py --url ws://... --token ...
 | `/统计` / `/stats` | 查看本群活跃统计 |
 | `/签到` / `/checkin` | 群内打卡，查看连续天数与累计次数 |
 | `/签到榜` / `/checkin_rank` | 查看本群签到排行（本月/累计） |
+| `/骰子 [NdM]` / `/roll` | 掷骰子，默认 1d6（例：`/骰子 2d6`） |
+| `/运势` / `/fortune` | 查看今日运势（同一人同一天结果稳定） |
+| `/选一个 <选项...>` / `/choose` | 从 2–20 个选项里随机选一个 |
 | `/版本` / `/version` | 查看版本和功能状态 |
 | `/权限` / `/op` | 查看自己的角色和管理员名单 |
 | `/ping` | 检查连通性 |
@@ -183,12 +187,13 @@ uv run python scripts/smoke_protocol.py --url ws://... --token ...
 
 常用业务配置位于 [`config/config.example.toml`](config/config.example.toml)：
 
-- `[features]`：全局功能开关（`welcome`、`chat`、`stats`、`moderation`、`checkin`）
+- `[features]`：全局功能开关（`welcome`、`chat`、`stats`、`moderation`、`checkin`、`fun`）
 - `[persona]`：机器人名称、身份和称呼
 - `[welcome]`：欢迎语与是否 @ 新人
 - `[chat]`：回复概率、冷却和连续 @ 行为
 - `[stats]`：落库间隔、趋势天数、管理员日报
 - `[checkin]`：签到文案模板、榜单人数与缺省范围
+- `[fun]`：运势文案模板（`等级|文案`，占位符 `{nickname}` / `{date}`）
 - `[backup]`：每日备份时间和保留周期
 - `[alert]`：协议端掉线提醒
 - `[moderation]`：敏感词、刷屏、复读、处置方式和灰度模式
@@ -267,6 +272,7 @@ act-bot/
 - [部署总览](docs/deploy.md)
 - [平台差异与限制](docs/platform-notes.md)
 - [命令约定与完整清单](docs/commands.md)
+- [群互动：骰子 / 运势 / 选一个](docs/fun.md)
 - [群管理与风控](docs/moderation.md)
 - [定时任务与推送](docs/scheduler.md)
 - [OneBot v11 接口契约](docs/onebot-contract.md)
